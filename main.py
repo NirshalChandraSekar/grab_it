@@ -2,6 +2,7 @@ from hand_traking import detect_hand_keypoints, sample_points_on_line
 from inference_stream import InferenceStream
 from segmentation import image_segmentation
 from dino_functions import Dinov2
+from viz import pca_2d, pca_3d, visualize_rotated_axes
 
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
@@ -14,6 +15,7 @@ def display_image(image, window_name="Image"):
     cv2.imshow(window_name, image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+    
 
 
 if __name__ == "__main__":
@@ -39,6 +41,7 @@ if __name__ == "__main__":
     keypoint_overlay = demo_image.copy()
     contact_point = [int(abs(keypoints["thumb_tip"][0]+keypoints["thumb_ip"][0])/2), 
                     int(abs(keypoints["thumb_tip"][1]+keypoints["thumb_ip"][1])/2)]
+    directional_point = keypoints["thumb_tip"]
     cv2.circle(keypoint_overlay, keypoints["thumb_tip"], 3, (0, 0, 255), -1)
     cv2.circle(keypoint_overlay, keypoints["thumb_ip"], 3, (0, 0, 255),  -1)
     cv2.circle(keypoint_overlay, contact_point, 3, (0, 255, 0), -1)
@@ -106,7 +109,7 @@ if __name__ == "__main__":
         point_indices.append(dino.pixel_to_idx([row, col], demo_image_grid, dino.patch_size))
     
     contact_point_index = dino.pixel_to_idx([contact_point[1], contact_point[0]], demo_image_grid, dino.patch_size)
-
+    directional_point_index = dino.pixel_to_idx([directional_point[1], directional_point[0]], demo_image_grid, dino.patch_size)
 
 
     '''
@@ -118,105 +121,68 @@ if __name__ == "__main__":
         distance = np.reshape(distance, (inference_color_image_grid[0], inference_color_image_grid[1]))
         distance = cv2.resize(distance, (inference_color_image_tensor.shape[2], 
                                          inference_color_image_tensor.shape[1]), interpolation=cv2.INTER_CUBIC)
+        threshold = np.percentile(distance, 0.005)
+        
+        distance = distance < threshold
+
         if distance_map is None:
             distance_map = distance
         else:
-            distance_map += distance
+            distance_map = np.logical_or(distance_map, distance)
+
 
     plt.imshow(inference_color_image)
     plt.imshow(distance_map, alpha=0.5)
-    plt.colorbar()
     plt.show()
 
     contact_point_distance = dino.compute_feature_distance(contact_point_index, demo_image_features, inference_color_image_features)
     contact_point_distance = np.reshape(contact_point_distance, (inference_color_image_grid[0], inference_color_image_grid[1]))
     contact_point_distance = cv2.resize(contact_point_distance, (inference_color_image_tensor.shape[2], 
                                          inference_color_image_tensor.shape[1]), interpolation=cv2.INTER_CUBIC)
-    
-    inference_contact_point = np.unravel_index(np.argmin(contact_point_distance, axis=None), contact_point_distance.shape)
+    threshold = np.percentile(contact_point_distance, 0.005)
+    contact_point_distance = contact_point_distance < threshold
 
+    directional_point_distance = dino.compute_feature_distance(directional_point_index, demo_image_features, inference_color_image_features)
+    directional_point_distance = np.reshape(directional_point_distance, (inference_color_image_grid[0], inference_color_image_grid[1]))
+    directional_point_distance = cv2.resize(directional_point_distance, (inference_color_image_tensor.shape[2], 
+                                         inference_color_image_tensor.shape[1]), interpolation=cv2.INTER_CUBIC)
+    threshold = np.percentile(directional_point_distance, 0.005)
+    directional_point_distance = directional_point_distance < threshold
 
+    inference_contact_point = np.mean(np.argwhere(contact_point_distance), axis=0)
+    inference_directional_point = np.mean(np.argwhere(directional_point_distance), axis=0)
+    cv2.circle(inference_color_image, (int(inference_contact_point[1]), int(inference_contact_point[0])), 3, (0, 255, 0), -1)
+    cv2.circle(inference_color_image, (int(inference_directional_point[1]), int(inference_directional_point[0])), 3, (0, 255, 0), -1)
+    display_image(inference_color_image, "Inference Contact Point Overlay")
+
+   
     '''
     Compute 2D PCA
     '''
-    threshold = np.percentile(distance_map, 0.05)
-    important_pixels = np.argwhere(distance_map < threshold)
-
-    pca = PCA(n_components=2)
-    pca.fit(important_pixels)
-
-    center = [inference_contact_point[1], inference_contact_point[0]]
-    direction = pca.components_[0]
-
-    length = 30
-    p1 = (int(center[0] - length * direction[0]), int(center[1] - length * direction[1]))
-    p2 = (int(center[0] + length * direction[0]), int(center[1] + length * direction[1]))
-
-    pca_image = inference_color_image.copy()
-    pca_image = cv2.cvtColor(pca_image, cv2.COLOR_RGB2BGR)
-    cv2.line(pca_image, p1, p2, (0, 255, 0), 2)
-    cv2.circle(pca_image, center, 3, (0, 0, 255), -1)
-
-    display_image(pca_image, "PCA Line Overlay")
-
+    
+    important_pixels = np.argwhere(distance_map)
+    center = [int(inference_contact_point[1]), int(inference_contact_point[0])]
+    pca_2d(important_pixels, center, inference_color_image)
+    
 
     '''
     Compute 3D PCA
     '''
-    cx, cy, fx, fy = np.load("resources/" + object_name + "/camera_intrinsic.npy")
+    intrinsics= np.load("resources/" + object_name + "/camera_intrinsic.npy")
     inference_depth_image = np.load("resources/" + object_name + "/inference_depth_image.npy")
     inference_depth_image = inference_depth_image.astype(np.float32)
     inference_depth_image *= 0.001 # D4054
-    # inference_depth_image *= 0.00025 # L515
-
-    intrinsics = o3d.camera.PinholeCameraIntrinsic(inference_color_image.shape[1], inference_color_image.shape[0], fx, fy, cx, cy)
-    rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(
-                            o3d.geometry.Image(inference_color_image), 
-                            o3d.geometry.Image(inference_depth_image), 
-                            depth_scale=1.0, 
-                            depth_trunc=3, 
-                            convert_rgb_to_intensity=False
-                            )
-
-    pcd = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd_image, intrinsics)
-    v_coords = important_pixels[:, 0]
-    u_coords = important_pixels[:, 1]
-
-    z_values = inference_depth_image[v_coords, u_coords]
     
-    x_values = (u_coords - cx) * z_values / fx
-    y_values = (v_coords - cy) * z_values / fy
-
-    important_points_3d = np.column_stack([x_values, y_values, z_values])
-
-    inference_contact_point_3d = [(inference_contact_point[1] - cx) * inference_depth_image[inference_contact_point[0], inference_contact_point[1]] / fx,
-                                  (inference_contact_point[0] - cy) * inference_depth_image[inference_contact_point[0], inference_contact_point[1]] / fy,
-                                  inference_depth_image[inference_contact_point[0], inference_contact_point[1]]]
+    pcd, imp_pcd, contact_point_3d, axes = pca_3d(important_pixels, 
+           intrinsics, 
+           inference_depth_image, 
+           inference_color_image,
+           inference_contact_point,
+           inference_directional_point)
     
-    pcd_important = o3d.geometry.PointCloud()
-    pcd_important.points = o3d.utility.Vector3dVector(important_points_3d)
-    pcd_important.paint_uniform_color([1, 0, 0])
+    '''
+    Visualize the rotated axes
+    '''
+    visualize_rotated_axes(pcd, imp_pcd, contact_point_3d, axes)
 
-    pca = PCA(n_components=3)
-    pca.fit(important_points_3d)
 
-    center = inference_contact_point_3d
-    axes = pca.components_
-
-    scale = 0.5
-    axis_points = np.array([
-        center, center + scale * axes[0],  # Principal axis 1
-        center, center + scale * axes[1],  # Principal axis 2
-        center, center + scale * axes[2],  # Principal axis 3
-    ])
-
-    lines = [[0, 1], [2, 3], [4, 5]]  # Each pair defines a line
-    colors = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]  # RGB: Red, Green, Blue
-    axis_lines = o3d.geometry.LineSet()
-    axis_lines.points = o3d.utility.Vector3dVector(axis_points)
-    axis_lines.lines = o3d.utility.Vector2iVector(lines)
-    axis_lines.colors = o3d.utility.Vector3dVector(colors)  # Set colors
-
-    o3d.visualization.draw_geometries([pcd, pcd_important, axis_lines])
-
-    
