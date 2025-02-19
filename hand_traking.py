@@ -12,7 +12,7 @@ def detect_hand_keypoints(image):
     """
     # Initialize Mediapipe hands module
     mp_hands = mp.solutions.hands
-    hands = mp_hands.Hands(static_image_mode=True, max_num_hands=1, 
+    hands = mp_hands.Hands(static_image_mode=True, max_num_hands=2, 
                            min_detection_confidence=0.1)
     mp_draw = mp.solutions.drawing_utils
 
@@ -23,21 +23,19 @@ def detect_hand_keypoints(image):
     keypoints = {}
 
     if results.multi_hand_landmarks:
-        # Process only the first detected hand.
-        hand_landmarks = results.multi_hand_landmarks[0]
-        thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
-        thumb_ip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_IP]
+        for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
+            thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
+            thumb_ip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_IP]
 
-        thumb_tip_x, thumb_tip_y = int(thumb_tip.x * w), int(thumb_tip.y * h)
-        thumb_ip_x, thumb_ip_y = int(thumb_ip.x * w), int(thumb_ip.y * h)
+            thumb_tip_x, thumb_tip_y = int(thumb_tip.x * w), int(thumb_tip.y * h)
+            thumb_ip_x, thumb_ip_y = int(thumb_ip.x * w), int(thumb_ip.y * h)
 
-        keypoints = {
-            "thumb_tip": (thumb_tip_x, thumb_tip_y),
-            "thumb_ip": (thumb_ip_x, thumb_ip_y)
-        }
+            keypoints[idx] = {
+                "thumb_tip": (thumb_tip_x, thumb_tip_y),
+                "thumb_ip": (thumb_ip_x, thumb_ip_y)
+            }
+            mp_draw.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-        # Draw the hand landmarks on the image.
-        mp_draw.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
     else:
         print("No hand detected.")
 

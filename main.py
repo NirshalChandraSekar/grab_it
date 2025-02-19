@@ -15,7 +15,7 @@ def display_image(image, window_name="Image"):
     cv2.imshow(window_name, image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-    
+
 
 
 if __name__ == "__main__":
