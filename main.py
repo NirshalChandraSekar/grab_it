@@ -2,7 +2,7 @@ from hand_traking import detect_hand_keypoints, sample_points_on_line
 from inference_stream import InferenceStream
 from segmentation import image_segmentation
 from dino_functions import Dinov2
-from viz import pca_2d, pca_3d, visualize_rotated_axes
+from viz import pca_2d, pca_3d, get_gt, visualize_rotated_axes
 
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
@@ -19,7 +19,7 @@ def display_image(image, window_name="Image"):
 
 
 if __name__ == "__main__":
-    object_name = "box"
+    object_name = "pouch"
 
     '''
     Read the demonstration images. Ideally we will have to give the video as input.
@@ -186,24 +186,38 @@ if __name__ == "__main__":
         important_pixels[key] = np.argwhere(distance_map[key])
         center[key] = [int(inference_contact_point[key][1]), int(inference_contact_point[key][0])]
 
-    pca_2d(important_pixels, center, inference_color_image)
-    
+    # pca_2d(important_pixels, center, inference_color_image)
 
     '''
-    Compute 3D PCA
+    Get Ground Truth Grasp Axes from the user
     '''
     intrinsics= np.load("resources/" + object_name + "/camera_intrinsic.npy")
     inference_depth_image = np.load("resources/" + object_name + "/inference_depth_image.npy")
     inference_depth_image = inference_depth_image.astype(np.float32)
     inference_depth_image *= 0.001 # D4054
     # inference_depth_image *= 0.00025
+
+    gt_grasp_axes = {}
+    for key in important_pixels:
+        gt_grasp_axes[key] = get_gt(inference_color_image, inference_depth_image, intrinsics)
+    print("GT Grasp Axes: ", gt_grasp_axes)
+
+
     
-    pcd, imp_pcd, contact_point_3d, axes = pca_3d(important_pixels, 
+
+    '''
+    Compute 3D PCA
+    '''
+    
+    
+    grasp_axes = pca_3d(important_pixels, 
            intrinsics, 
            inference_depth_image, 
            inference_color_image,
            inference_contact_point,
            inference_directional_point)
+    
+    print("Grasp Axes: ", grasp_axes)
     
     '''
     Visualize the rotated axes

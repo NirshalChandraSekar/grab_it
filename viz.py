@@ -6,57 +6,57 @@ from sklearn.linear_model import RANSACRegressor
 from scipy.spatial.transform import Rotation as R
 
 def pca_2d(pixels, center, image):
-    pca_image = image.copy()
-    pca_image = cv2.cvtColor(pca_image, cv2.COLOR_RGB2BGR)  
-    for key in pixels:
-        pca = PCA(n_components=2)
-        pca.fit(pixels[key])
-        direction = pca.components_[0]
-        length = 30
-        p1 = (int(center[key][0] - length * direction[0]), int(center[key][1] - length * direction[1]))
-        p2 = (int(center[key][0] + length * direction[0]), int(center[key][1] + length * direction[1]))
-        cv2.line(pca_image, p1, p2, (0, 255, 0), 2)
-        cv2.circle(pca_image, center[key], 3, (0, 0, 255), -1)
-    
-
-    cv2.imshow("PCA Line Overlay", pca_image)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
     # pca_image = image.copy()
     # pca_image = cv2.cvtColor(pca_image, cv2.COLOR_RGB2BGR)  
-
     # for key in pixels:
-    #     points = np.array(pixels[key])
-
-    #     # Fit PCA to find the main direction
     #     pca = PCA(n_components=2)
-
-    #     # Use RANSAC to remove outliers
-    #     x_coords = points[:, 0].reshape(-1, 1)
-    #     y_coords = points[:, 1]
-
-    #     ransac = RANSACRegressor()
-    #     ransac.fit(x_coords, y_coords)
-    #     inlier_mask = ransac.inlier_mask_  # Identified inliers
-
-    #     # Recompute PCA on inliers only
-    #     inlier_points = points[inlier_mask]
-    #     pca.fit(inlier_points)
+    #     pca.fit(pixels[key])
     #     direction = pca.components_[0]
-
-    #     # Extend line in both directions
     #     length = 30
     #     p1 = (int(center[key][0] - length * direction[0]), int(center[key][1] - length * direction[1]))
     #     p2 = (int(center[key][0] + length * direction[0]), int(center[key][1] + length * direction[1]))
-
-    #     # Draw the robust PCA line
     #     cv2.line(pca_image, p1, p2, (0, 255, 0), 2)
     #     cv2.circle(pca_image, center[key], 3, (0, 0, 255), -1)
+    
 
-    # cv2.imshow("Robust PCA Line Overlay", pca_image)
+    # cv2.imshow("PCA Line Overlay", pca_image)
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
+
+    pca_image = image.copy()
+    pca_image = cv2.cvtColor(pca_image, cv2.COLOR_RGB2BGR)  
+
+    for key in pixels:
+        points = np.array(pixels[key])
+
+        # Fit PCA to find the main direction
+        pca = PCA(n_components=2)
+
+        # Use RANSAC to remove outliers
+        x_coords = points[:, 0].reshape(-1, 1)
+        y_coords = points[:, 1]
+
+        ransac = RANSACRegressor()
+        ransac.fit(x_coords, y_coords)
+        inlier_mask = ransac.inlier_mask_  # Identified inliers
+
+        # Recompute PCA on inliers only
+        inlier_points = points[inlier_mask]
+        pca.fit(inlier_points)
+        direction = pca.components_[0]
+
+        # Extend line in both directions
+        length = 30
+        p1 = (int(center[key][0] - length * direction[0]), int(center[key][1] - length * direction[1]))
+        p2 = (int(center[key][0] + length * direction[0]), int(center[key][1] + length * direction[1]))
+
+        # Draw the robust PCA line
+        cv2.line(pca_image, p1, p2, (0, 255, 0), 2)
+        cv2.circle(pca_image, center[key], 3, (0, 0, 255), -1)
+
+    cv2.imshow("Robust PCA Line Overlay", pca_image)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
 # 
 def pca_3d(points, intrinsics_, depth_image, color_image, contact_point, inference_directional_point):
@@ -199,6 +199,157 @@ def pca_3d(points, intrinsics_, depth_image, color_image, contact_point, inferen
     o3d.visualization.draw_geometries(objects_to_visualize)
 
     return grasp_axis
+
+import open3d as o3d
+import numpy as np
+
+def get_gt(color_image, depth_image, intrinsics_):
+    """
+    Generates a point cloud from a color and depth image using given intrinsics,
+    overlays a movable coordinate frame, and returns the final transformation
+    matrix of the grasp axis relative to the camera frame.
+
+    Parameters:
+        color_image (numpy.ndarray): Color image (H, W, 3)
+        depth_image (numpy.ndarray): Depth image (H, W)
+        intrinsics (o3d.camera.PinholeCameraIntrinsic): Camera intrinsics
+
+    Returns:
+        numpy.ndarray: 4x4 transformation matrix of the grasp axis relative to the camera frame
+    """
+    cx, cy, fx, fy = intrinsics_
+
+    intrinsics = o3d.camera.PinholeCameraIntrinsic(
+        color_image.shape[1],  # Image width
+        color_image.shape[0],  # Image height
+        fx, fy, cx, cy
+    )
+
+    # Step 1: Convert images to Open3D format
+    color_o3d = o3d.geometry.Image(color_image)
+    depth_o3d = o3d.geometry.Image(depth_image)
+
+    # Step 2: Create RGBD image and generate point cloud
+    rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+        color_o3d, depth_o3d, depth_scale=1.0, depth_trunc=3.0, convert_rgb_to_intensity=False
+    )
+    point_cloud = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd, intrinsics)
+
+    # Step 3: Create a static camera frame (default)
+    camera_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2)
+
+    # Step 4: Create the movable grasp axis coordinate frame
+    grasp_axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2)
+
+    # Initialize transformation matrix
+    transformation = np.eye(4)
+    transformation[:3, 3] = [0, 0, 0]  # Start at origin
+
+    # Translation & Rotation step sizes
+    translation_step = 0.02
+    rotation_step = np.radians(5)
+
+    def apply_transformation():
+        """Reapply the updated transformation matrix to the grasp axis."""
+        nonlocal grasp_axis
+        grasp_axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2)
+        grasp_axis.transform(transformation)
+
+    def translate(dx, dy, dz):
+        """Move the grasp axis in its local frame."""
+        nonlocal transformation
+        local_translation = transformation[:3, :3] @ np.array([dx, dy, dz])
+        translation_matrix = np.eye(4)
+        translation_matrix[:3, 3] = local_translation
+        transformation = translation_matrix @ transformation
+        apply_transformation()
+
+    def rotate(rx, ry, rz):
+        """Rotate the grasp axis around its local frame axes."""
+        nonlocal transformation
+        local_x = transformation[:3, 0]  # Local X-axis
+        local_y = transformation[:3, 1]  # Local Y-axis
+        local_z = transformation[:3, 2]  # Local Z-axis
+
+        def rotation_matrix(axis, theta):
+            """Returns a 3x3 rotation matrix using axis-angle representation."""
+            return o3d.geometry.get_rotation_matrix_from_axis_angle(theta * axis)
+
+        if rx != 0:
+            R_x = rotation_matrix(local_x, rx)
+            transformation[:3, :3] = R_x @ transformation[:3, :3]
+        if ry != 0:
+            R_y = rotation_matrix(local_y, ry)
+            transformation[:3, :3] = R_y @ transformation[:3, :3]
+        if rz != 0:
+            R_z = rotation_matrix(local_z, rz)
+            transformation[:3, :3] = R_z @ transformation[:3, :3]
+
+        apply_transformation()
+
+    def key_callback(vis, key, action):
+        """Handles key press events and preserves the camera view."""
+        if action == 1:  # Key down event
+            # Save the current view control parameters
+            ctr = vis.get_view_control()
+            camera_params = ctr.convert_to_pinhole_camera_parameters()
+
+            if key == 265:  # Up arrow (Move forward in local Z)
+                translate(0, 0, -translation_step)
+            elif key == 264:  # Down arrow (Move backward in local Z)
+                translate(0, 0, translation_step)
+            elif key == 263:  # Left arrow (Move left in local X)
+                translate(-translation_step, 0, 0)
+            elif key == 262:  # Right arrow (Move right in local X)
+                translate(translation_step, 0, 0)
+            elif key == ord('Q'):  # Move up in local Y
+                translate(0, translation_step, 0)
+            elif key == ord('E'):  # Move down in local Y
+                translate(0, -translation_step, 0)
+            elif key == ord('R'):  # Roll (rotate around X)
+                rotate(rotation_step, 0, 0)
+            elif key == ord('P'):  # Pitch (rotate around Y)
+                rotate(0, rotation_step, 0)
+            elif key == ord('Y'):  # Yaw (rotate around Z)
+                rotate(0, 0, rotation_step)
+
+            # Clear and re-add geometries
+            vis.clear_geometries()
+            vis.add_geometry(point_cloud)
+            vis.add_geometry(camera_frame)
+            vis.add_geometry(grasp_axis)
+            vis.update_renderer()
+
+            # Restore the previous camera view
+            ctr.convert_from_pinhole_camera_parameters(camera_params)
+
+    # Open3D Visualization
+    vis = o3d.visualization.VisualizerWithKeyCallback()
+    vis.create_window()
+    vis.add_geometry(point_cloud)
+    vis.add_geometry(camera_frame)
+    vis.add_geometry(grasp_axis)
+
+    # Register key callbacks
+    vis.register_key_callback(265, lambda vis: key_callback(vis, 265, 1))  # Up arrow
+    vis.register_key_callback(264, lambda vis: key_callback(vis, 264, 1))  # Down arrow
+    vis.register_key_callback(263, lambda vis: key_callback(vis, 263, 1))  # Left arrow
+    vis.register_key_callback(262, lambda vis: key_callback(vis, 262, 1))  # Right arrow
+    vis.register_key_callback(ord('Q'), lambda vis: key_callback(vis, ord('Q'), 1))  # Move up in Y
+    vis.register_key_callback(ord('E'), lambda vis: key_callback(vis, ord('E'), 1))  # Move down in Y
+    vis.register_key_callback(ord('R'), lambda vis: key_callback(vis, ord('R'), 1))  # Roll
+    vis.register_key_callback(ord('P'), lambda vis: key_callback(vis, ord('P'), 1))  # Pitch
+    vis.register_key_callback(ord('Y'), lambda vis: key_callback(vis, ord('Y'), 1))  # Yaw
+
+    vis.run()  # Start visualization loop
+
+    # Print and return final transformation
+    print("\nFinal Grasp Axis Transformation (Relative to Camera Frame):")
+    print(transformation)
+
+    vis.destroy_window()  # Close visualization
+    return transformation
+
 
 def visualize_rotated_axes(pcd, imp_pcd, contact_point_3d, axes, angles=[30, 60, 90], scale=0.5):
     geometries = [pcd, imp_pcd]  # Include the original point cloud and important points
