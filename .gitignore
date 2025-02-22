@@ -2,3 +2,6 @@ extra/
 __pycache__/
 resources/
 mohit/
+try.py
+camera_calibration_utils/
+.gitignore

@@ -46,21 +46,20 @@ def voxel_downsample_pointcloud(pointcloud : o3d.geometry.PointCloud,
     return pointcloud.voxel_down_sample(voxel_size=voxel_size)
 
 def generate_fused_pointcloud_from_images(
-    image1_path : str,
-    image2_path : str,
-    image3_path : str,
+    rs_images_path : str,
     transformation_matrix_1_2_path : str,
     transformation_matrix_1_3_path : str,
     depth_scale : float = 1/0.00025, ## For L515
     depth_truncation : float = 1.0,
     downsample_voxel_size : float = None,
+    remove_outliers : bool = True,
+    radius_outlier_removal : float = 0.005,
+    num_neighbors_outlier_removal : int = 20,
     visualize : bool = False,
 )    -> o3d.geometry.PointCloud:
     """Generate a merged pointcloud from RGB and depth images.
     Args:
-        image1_path (str): Path to image 1.
-        image2_path (str): Path to image 2.
-        image3_path (str): Path to image 3.
+        rs_images_path (str): Path to RGB and depth images.
         transformation_matrix_1_2_path (str): Path to transformation matrix from camera 1 to camera 2.
         transformation_matrix_1_3_path (str): Path to transformation matrix from camera 1 to camera 3.
         depth_scale (float, optional): Depth scale. Defaults to 1/0.00025.
@@ -71,40 +70,59 @@ def generate_fused_pointcloud_from_images(
         o3d.geometry.PointCloud: Merged pointcloud.
     """   
     ## Load Images.
-    image1_path = "camera_calibration_images/2/"
-    image2_path = "camera_calibration_images/3/"
-    image3_path = "camera_calibration_images/3/"
+    rs_image_data = np.load(rs_images_path, allow_pickle=True).item()
+    '''
+    Camera Serial to number 
+    130322273305 -> 1
+    128422270081 -> 2
+    127122270512 -> 3
+    '''
 
-    rgb1 = np.load(f"{image1_path}color_image.npy")
-    rgb2 = np.load(f"{image2_path}color_image.npy")
-    rgb3 = np.load(f"{image3_path}color_image.npy")
+    rgb1 = rs_image_data['130322273305']['color']
+    rgb2 = rs_image_data['128422270081']['color']
+    rgb3 = rs_image_data['127122270512']['color']
 
-    depth1 = np.load(f"{image1_path}depth_image.npy")
-    depth2 = np.load(f"{image2_path}depth_image.npy")
-    depth3 = np.load(f"{image3_path}depth_image.npy")
+    depth1 = rs_image_data['130322273305']['depth']
+    depth2 = rs_image_data['128422270081']['depth']
+    depth3 = rs_image_data['127122270512']['depth']
 
     ## Load camera intrinsic parameters
-    camera1_intrinsics = np.load(f"{image1_path}intrinsic.npy")
-    camera2_intrinsics = np.load(f"{image2_path}intrinsic.npy")
-    camera3_intrinsics = np.load(f"{image3_path}intrinsic.npy")
+    camera1_intrinsics = rs_image_data['130322273305']['intrinsics']
+    camera2_intrinsics = rs_image_data['128422270081']['intrinsics']
+    camera3_intrinsics = rs_image_data['127122270512']['intrinsics']
 
-    camera1_intrinsics = o3d.camera.PinholeCameraIntrinsic(width=rgb1.shape[1],height=rgb1.shape[0],fx=camera1_intrinsics[2],fy=camera1_intrinsics[3],cx=camera1_intrinsics[0],cy=camera1_intrinsics[1])
-    camera2_intrinsics = o3d.camera.PinholeCameraIntrinsic(width=rgb2.shape[1],height=rgb2.shape[0],fx=camera2_intrinsics[2],fy=camera2_intrinsics[3],cx=camera2_intrinsics[0],cy=camera2_intrinsics[1])
-    camera3_intrinsics = o3d.camera.PinholeCameraIntrinsic(width=rgb3.shape[1],height=rgb3.shape[0],fx=camera3_intrinsics[2],fy=camera3_intrinsics[3],cx=camera3_intrinsics[0],cy=camera3_intrinsics[1])
+    camera1_intrinsics = o3d.camera.PinholeCameraIntrinsic(width=rgb1.shape[1],height=rgb1.shape[0],fx=camera1_intrinsics['fx'],fy=camera1_intrinsics['fy'],cx=camera1_intrinsics['ppx'],cy=camera1_intrinsics['ppy'])
+    camera2_intrinsics = o3d.camera.PinholeCameraIntrinsic(width=rgb2.shape[1],height=rgb2.shape[0],fx=camera2_intrinsics['fx'],fy=camera2_intrinsics['fy'],cx=camera2_intrinsics['ppx'],cy=camera2_intrinsics['ppy'])
+    camera3_intrinsics = o3d.camera.PinholeCameraIntrinsic(width=rgb3.shape[1],height=rgb3.shape[0],fx=camera3_intrinsics['fx'],fy=camera3_intrinsics['fy'],cx=camera3_intrinsics['ppx'],cy=camera3_intrinsics['ppy'])
 
     ## Generate pointclouds from Images.
     pointcloud1 = generate_pointcloud_from_images(rgb1, depth1, camera1_intrinsics, depth_scale, depth_truncation)
     pointcloud2 = generate_pointcloud_from_images(rgb2, depth2, camera2_intrinsics, depth_scale, depth_truncation)
     pointcloud3 = generate_pointcloud_from_images(rgb3, depth3, camera3_intrinsics, depth_scale, depth_truncation)
 
+    z_displacement = 0.04
+    pointcloud1.transform([[1, 0, 0, 0],
+                            [0, 1, 0, 0],
+                            [0, 0, 1, z_displacement],
+                            [0, 0, 0, 1]])
+    pointcloud2.transform([[1, 0, 0, 0],
+                            [0, 1, 0, 0],
+                            [0, 0, 1, z_displacement],
+                            [0, 0, 0, 1]])
+    pointcloud3.transform([[1, 0, 0, 0],
+                            [0, 1, 0, 0],
+                            [0, 0, 1, z_displacement],
+                            [0, 0, 0, 1]])
+
     ## Load the transformation matrix
     transformation_matrix_1_2 = np.load(transformation_matrix_1_2_path)
     transformation_matrix_1_3 = np.load(transformation_matrix_1_3_path)
 
-    ## Filter Pointclouds to remove outliers
-    pointcloud1, indices1 = filter_pointcloud_radius_outlier_removal(pointcloud1, radius=0.005, min_neighbors=20)
-    pointcloud2, indices2 = filter_pointcloud_radius_outlier_removal(pointcloud2, radius=0.005, min_neighbors=20)
-    pointcloud3, indices3 = filter_pointcloud_radius_outlier_removal(pointcloud3, radius=0.005, min_neighbors=20)
+    ## Filter Pointclouds to remove outliers (_ are indices)
+    if remove_outliers:
+        pointcloud1, _ = filter_pointcloud_radius_outlier_removal(pointcloud1, radius=radius_outlier_removal, min_neighbors=num_neighbors_outlier_removal)
+        pointcloud2, _ = filter_pointcloud_radius_outlier_removal(pointcloud2, radius=radius_outlier_removal, min_neighbors=num_neighbors_outlier_removal)
+        pointcloud3, _ = filter_pointcloud_radius_outlier_removal(pointcloud3, radius=radius_outlier_removal, min_neighbors=num_neighbors_outlier_removal)
 
     ## Transform pointcloud2 and pointcloud3 to camera1 coordinate frame
     pointcloud2.transform(transformation_matrix_1_2)
@@ -112,7 +130,6 @@ def generate_fused_pointcloud_from_images(
 
     ## Merge the pointclouds into a single pointcloud
     fused_pointcloud = pointcloud1 + pointcloud2 + pointcloud3
-
 
     ## Downsample the merged pointcloud
     if downsample_voxel_size is not None:
@@ -158,19 +175,22 @@ def generate_antipodal_point_pairs(pointcloud : o3d.geometry.PointCloud,
 
                 dot_product_of_normals = np.dot(normal1, normal2)
                 if (dot_product_of_normals > 0 and dot_product_of_normals > np.cos(angle_threshold)) or (dot_product_of_normals < 0 and dot_product_of_normals < -np.cos(angle_threshold)):
-                    antipodal_pairs.append((i, j))
+                    antipodal_pairs.append((i, j)) 
     return np.array(antipodal_pairs)
 
 if __name__ == "__main__":
     fused_pointcloud = generate_fused_pointcloud_from_images(
-                            image1_path="camera_calibration_images/1/",
-                            image2_path="camera_calibration_images/2/",
-                            image3_path="camera_calibration_images/3/",
+                            rs_images_path="multi_camera_pouch.npy",
                             transformation_matrix_1_2_path="transformation_matrix_1_2.npy",
                             transformation_matrix_1_3_path="transformation_matrix_1_3.npy",
-                            downsample_voxel_size=0.01, ## This will speed up the processing significantly.
-                            visualize=False,
+                            downsample_voxel_size=0.01, ## This will speed up the processing significantly. Keep 0.01
+                            visualize=True,
+                            remove_outliers=True,
+                            radius_outlier_removal=0.005,
+                            num_neighbors_outlier_removal=20,
+                            depth_scale=1/0.0001,
+                            depth_truncation=0.3
                         )
 
-    antipodal_pairs = generate_antipodal_point_pairs(fused_pointcloud)
+    # antipodal_pairs = generate_antipodal_point_pairs(fused_pointcloud)
 
