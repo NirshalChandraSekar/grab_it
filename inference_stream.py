@@ -43,6 +43,9 @@ class InferenceMultiCamera:
         if len(self.ctx.devices) == 0:
             raise RuntimeError("No RealSense devices found")
         
+        else:
+            print("Found", len(self.ctx.devices), "RealSense devices")
+        
         # Setup a pipeline for each connected device
         for dev in self.ctx.devices:
             serial = dev.get_info(rs.camera_info.serial_number)

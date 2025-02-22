@@ -138,22 +138,26 @@ if __name__ == "__main__":
     board = cv2.aruco.CharucoBoard((5, 7), 0.04, 0.03, aruco_dict)
 
     ## Load Images
-    image1_path = "camera_calibration_images/2/"
-    image2_path = "camera_calibration_images/3/"
-    image3_path = "camera_calibration_images/3/"
 
-    rgb1 = np.load(f"{image1_path}color_image.npy")
-    rgb2 = np.load(f"{image2_path}color_image.npy")
-    rgb3 = np.load(f"{image3_path}color_image.npy")
+    '''
+    Camera Serial to number 
+    130322273305 -> 1
+    128422270081 -> 2
+    127122270512 -> 3
+    '''
 
-    ## Load camera intrinsic parameters
-    camera1_intrinsics = np.load(f"{image1_path}intrinsic.npy")
-    camera2_intrinsics = np.load(f"{image2_path}intrinsic.npy")
-    camera3_intrinsics = np.load(f"{image3_path}intrinsic.npy")
+    camera_data = np.load("mohit/multi_camera.npy", allow_pickle=True).item()
+    rgb1 = camera_data['130322273305']['color']
+    rgb2 = camera_data['128422270081']['color']
+    rgb3 = camera_data['127122270512']['color']
 
-    cx1, cy1, fx1, fy1 = camera1_intrinsics
-    cx2, cy2, fx2, fy2 = camera2_intrinsics
-    cx3, cy3, fx3, fy3 = camera3_intrinsics
+    camera1_intrinsics = camera_data['130322273305']['intrinsics']
+    camera2_intrinsics = camera_data['128422270081']['intrinsics']
+    camera3_intrinsics = camera_data['127122270512']['intrinsics']
+
+    cx1, cy1, fx1, fy1 = camera1_intrinsics['ppx'], camera1_intrinsics['ppy'], camera1_intrinsics['fx'], camera1_intrinsics['fy']
+    cx2, cy2, fx2, fy2 = camera2_intrinsics['ppx'], camera2_intrinsics['ppy'], camera2_intrinsics['fx'], camera2_intrinsics['fy']   
+    cx3, cy3, fx3, fy3 = camera3_intrinsics['ppx'], camera3_intrinsics['ppy'], camera3_intrinsics['fx'], camera3_intrinsics['fy']
 
     camera1_intrinsics = np.array([[fx1, 0, cx1],
                                     [0, fy1, cy1],
