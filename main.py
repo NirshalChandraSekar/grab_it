@@ -1,5 +1,5 @@
 from hand_traking import detect_hand_keypoints, sample_points_on_line
-from inference_stream import InferenceStream
+from inference_stream import InferenceStream, InferenceMultiCamera
 from segmentation import image_segmentation
 from dino_functions import Dinov2
 from viz import pca_2d, pca_3d, get_gt, visualize_rotated_axes
@@ -19,7 +19,7 @@ def display_image(image, window_name="Image"):
 
 
 if __name__ == "__main__":
-    object_name = "pouch"
+    object_name = "dino"
 
     '''
     Read the demonstration images. Ideally we will have to give the video as input.
@@ -50,7 +50,7 @@ if __name__ == "__main__":
         cv2.circle(keypoint_overlay, keypoints[key]["thumb_ip"], 3, (0, 0, 255),  -1)
         cv2.circle(keypoint_overlay, contact_point_2d[key], 3, (0, 255, 0), -1)
 
-    display_image(keypoint_overlay, "Hand Keypoints Overlay")
+    # display_image(keypoint_overlay, "Hand Keypoints Overlay")
 
 
     checkpoint = "/home/nirshal/codes/sam2/checkpoints/sam2.1_hiera_large.pt"
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     mask = segmentor.segment_image(demo_image)
     mask = mask.transpose(1, 2, 0)
     viewable_mask = mask.astype(np.uint8) * 255
-    display_image(viewable_mask, "Segmented Mask")
+    # display_image(viewable_mask, "Segmented Mask")
 
     sampled_points_2d = {}
     for key in keypoints:
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         for point in sampled_points_2d[key]:
             cv2.circle(keypoint_overlay, point, 3, (0, 255, 0), -1)
 
-    display_image(keypoint_overlay, "Sampled Points Overlay")
+    # display_image(keypoint_overlay, "Sampled Points Overlay")
 
 
 
@@ -78,15 +78,29 @@ if __name__ == "__main__":
     check = input("Do you want to record the inference? (1 for yes, 0 for no): ")
     if check == "1":
         _ = input("Verify if camera is connected and press enter to continue")
-        stream = InferenceStream()
-        color_image, depth_image, intrinsic = stream.get_frame()
-        display_image(color_image, "Inference Image")
-        display_image(depth_image, "Inference Depth Image")
-        np.save("resources/" + object_name + "/inference_color_image.npy", color_image)
-        np.save("resources/" + object_name + "/inference_depth_image.npy", depth_image)
-        np.save("resources/" + object_name + "/camera_intrinsic.npy", intrinsic)
+        # stream = InferenceStream()
+        # color_image, depth_image, intrinsic = stream.get_frame()
+        # display_image(color_image, "Inference Image")
+        # display_image(depth_image, "Inference Depth Image")
+        # np.save("resources/" + object_name + "/inference_color_image.npy", color_image)
+        # np.save("resources/" + object_name + "/inference_depth_image.npy", depth_image)
+        # np.save("resources/" + object_name + "/camera_intrinsic.npy", intrinsic)
+        
+        stream = InferenceMultiCamera()
+        frames_dict = stream.get_frames()
+        for key in frames_dict:
+            color_image = frames_dict[key]["color"]
+            depth_image = frames_dict[key]["depth"]
+            intrinsic = [frames_dict[key]["intrinsics"]['ppx'],
+                         frames_dict[key]["intrinsics"]['ppy'],
+                         frames_dict[key]["intrinsics"]['fx'],
+                         frames_dict[key]["intrinsics"]['fy']]
+            np.save("resources/" + object_name + "/inference_color_image_" + key + ".npy", color_image)
+            np.save("resources/" + object_name + "/inference_depth_image_" + key + ".npy", depth_image)
+            np.save("resources/" + object_name + "/camera_intrinsic_" + key + ".npy", intrinsic)
     
-    inference_color_image = np.load("resources/" + object_name + "/inference_color_image.npy")
+    # inference_color_image = np.load("resources/" + object_name + "/inference_color_image.npy")
+    inference_color_image = np.load("resources/dino/inference_color_image_127122270512.npy")
 
 
 
@@ -143,10 +157,10 @@ if __name__ == "__main__":
                 distance_map[key] = np.logical_or(distance_map[key], distance)
 
 
-    plt.imshow(inference_color_image)
-    for key in distance_map:
-        plt.imshow(distance_map[key], alpha=0.5)
-    plt.show()
+    # plt.imshow(inference_color_image)
+    # for key in distance_map:
+    #     plt.imshow(distance_map[key], alpha=0.5)
+    # plt.show()
 
     contact_point_distance = {}
     directional_point_distance = {}
@@ -173,7 +187,7 @@ if __name__ == "__main__":
         cv2.circle(inference_color_image, (int(inference_contact_point[key][1]), int(inference_contact_point[key][0])), 3, (0, 255, 0), -1)
         cv2.circle(inference_color_image, (int(inference_directional_point[key][1]), int(inference_directional_point[key][0])), 3, (0, 255, 0), -1)
 
-    display_image(inference_color_image, "Inference Contact Point Overlay")
+    # display_image(inference_color_image, "Inference Contact Point Overlay")
 
 
    
@@ -191,10 +205,12 @@ if __name__ == "__main__":
     '''
     Get Ground Truth Grasp Axes from the user
     '''
-    intrinsics= np.load("resources/" + object_name + "/camera_intrinsic.npy")
-    inference_depth_image = np.load("resources/" + object_name + "/inference_depth_image.npy")
+    # intrinsics= np.load("resources/" + object_name + "/camera_intrinsic.npy")
+    intrinsics = np.load("resources/dino/camera_intrinsic_127122270512.npy")
+    # inference_depth_image = np.load("resources/" + object_name + "/inference_depth_image.npy")
+    inference_depth_image = np.load("resources/dino/inference_depth_image_127122270512.npy")
     inference_depth_image = inference_depth_image.astype(np.float32)
-    inference_depth_image *= 0.001 # D4054
+    inference_depth_image *= 0.0001 # D4054
     # inference_depth_image *= 0.00025
 
     gt_grasp_axes = {}

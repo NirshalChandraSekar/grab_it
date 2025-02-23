@@ -32,7 +32,10 @@ if __name__ == "__main__":
         cv2.imshow(str(serial) + " color", color_image)
         cv2.imshow(str(serial) + " depth", depth_image)
         cv2.waitKey(0)
+        # print("intrinsic type", type(intrinsic['ppx']))
+        # print('type of model', type(intrinsic['model']))
+        # print('type of coeffs', type(intrinsic['coeffs']))
 
     cv2.destroyAllWindows()
-    
-    np.save("mohit/multi_camera.npy", frames)
+
+    np.save("mohit/multi_camera_pouch.npy", frames)

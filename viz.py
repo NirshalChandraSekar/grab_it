@@ -75,7 +75,7 @@ def pca_3d(points, intrinsics_, depth_image, color_image, contact_point, inferen
         o3d.geometry.Image(color_image),
         o3d.geometry.Image(depth_image),
         depth_scale=1.0,
-        depth_trunc=3.0,  # Adjust depth truncation as needed
+        depth_trunc=0.5,  # Adjust depth truncation as needed
         convert_rgb_to_intensity=False
     )
 
@@ -115,7 +115,8 @@ def pca_3d(points, intrinsics_, depth_image, color_image, contact_point, inferen
 
         # Convert contact point to 3D
         z_contact = depth_image[int(contact_point[key][0]), int(contact_point[key][1])]
-        if np.isfinite(z_contact) and z_contact > 0 and z_contact < 3:
+        print('debug z contact', z_contact)
+        if np.isfinite(z_contact) and z_contact > 0 and z_contact < 0.5:
             contact_point_3d[key] = [
                 (contact_point[key][1] - cx) * z_contact / fx,
                 (contact_point[key][0] - cy) * z_contact / fy,
@@ -126,7 +127,8 @@ def pca_3d(points, intrinsics_, depth_image, color_image, contact_point, inferen
 
         # Convert directional point to 3D
         z_dir = depth_image[int(inference_directional_point[key][0]), int(inference_directional_point[key][1])]
-        if np.isfinite(z_dir) and z_dir > 0 and z_dir < 3:
+        print('debug z dir', z_dir)
+        if np.isfinite(z_dir) and z_dir > 0 and z_dir < 0.5:
             directional_point_3d[key] = np.array([
                 (inference_directional_point[key][1] - cx) * z_dir / fx,
                 (inference_directional_point[key][0] - cy) * z_dir / fy,
@@ -152,7 +154,7 @@ def pca_3d(points, intrinsics_, depth_image, color_image, contact_point, inferen
         }
 
         # Adjust the first principal axis to align with the inferred direction
-        if directional_point_3d[key] is not None:
+        if directional_point_3d[key] is not None and contact_point_3d[key] is not None:
             dir_vector = directional_point_3d[key] - contact_point_3d[key]
             if np.dot(dir_vector, grasp_axis[key]['axes'][0]) < 0:
                 grasp_axis[key]['axes'][0] = -grasp_axis[key]['axes'][0]
@@ -231,7 +233,7 @@ def get_gt(color_image, depth_image, intrinsics_):
 
     # Step 2: Create RGBD image and generate point cloud
     rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
-        color_o3d, depth_o3d, depth_scale=1.0, depth_trunc=3.0, convert_rgb_to_intensity=False
+        color_o3d, depth_o3d, depth_scale=1.0, depth_trunc=0.5, convert_rgb_to_intensity=False
     )
     point_cloud = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd, intrinsics)
 

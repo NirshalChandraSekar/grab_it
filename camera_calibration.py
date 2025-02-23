@@ -139,12 +139,7 @@ if __name__ == "__main__":
 
     ## Load Images
 
-    '''
-    Camera Serial to number 
-    130322273305 -> 1
-    128422270081 -> 2
-    127122270512 -> 3
-    '''
+    
 
     camera_data = np.load("mohit/multi_camera.npy", allow_pickle=True).item()
     rgb1 = camera_data['130322273305']['color']

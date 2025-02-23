@@ -95,7 +95,7 @@ class InferenceMultiCamera:
                 "fy": intrinsics_obj.fy,
                 "width": intrinsics_obj.width,
                 "height": intrinsics_obj.height,
-                "model": intrinsics_obj.model,
+                "model": intrinsics_obj.model.name,
                 "coeffs": intrinsics_obj.coeffs
             }
             
@@ -110,5 +110,5 @@ class InferenceMultiCamera:
 
     def stop(self):
         # Stop all pipelines when done
-        for pipeline in self.pipelines:
+        for pipeline in self.pipelines:  
             pipeline.stop()
