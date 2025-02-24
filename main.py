@@ -19,7 +19,7 @@ def display_image(image, window_name="Image"):
 
 
 if __name__ == "__main__":
-    object_name = "dino"
+    object_name = "pouch"
 
     '''
     Read the demonstration images. Ideally we will have to give the video as input.
@@ -99,98 +99,120 @@ if __name__ == "__main__":
             np.save("resources/" + object_name + "/inference_depth_image_" + key + ".npy", depth_image)
             np.save("resources/" + object_name + "/camera_intrinsic_" + key + ".npy", intrinsic)
     
-    # inference_color_image = np.load("resources/" + object_name + "/inference_color_image.npy")
-    inference_color_image = np.load("resources/dino/inference_color_image_127122270512.npy")
 
 
 
     '''
     Run the dino functions for feature extraction
     '''
-    demo_image = cv2.cvtColor(demo_image, cv2.COLOR_BGR2RGB)
-    inference_color_image = cv2.cvtColor(inference_color_image, cv2.COLOR_BGR2RGB)
-    
     dino = Dinov2()
-    print("dino initialized")
+    demo_image = cv2.cvtColor(demo_image, cv2.COLOR_BGR2RGB)
     
     demo_image_tensor, demo_image_grid = dino.prepare_image(demo_image)
-    inference_color_image_tensor, inference_color_image_grid = dino.prepare_image(inference_color_image)
-
     demo_image_features = dino.extract_features(demo_image_tensor)
-    inference_color_image_features = dino.extract_features(inference_color_image_tensor)
 
-    print("Demo Image Features Shape: ", demo_image_features.shape)
-    print("Inference Image Features Shape: ", inference_color_image_features.shape)
-
-
-
-    point_indices = {}
-    contact_point_index = {}
-    directional_point_index = {}
-
+    indices_sampled_points_2d = {}
+    demo_contact_point_index = {}
+    demo_directional_point_index = {}
     for key in sampled_points_2d:
-        point_indices[key] = []
+        indices_sampled_points_2d[key] = []
         for point in sampled_points_2d[key]:
             col, row = point
-            point_indices[key].append(dino.pixel_to_idx([row, col], demo_image_grid, dino.patch_size))
-        contact_point_index[key] = dino.pixel_to_idx([contact_point_2d[key][1], contact_point_2d[key][0]], demo_image_grid, dino.patch_size)
-        directional_point_index[key] = dino.pixel_to_idx([directional_point_2d[key][1], directional_point_2d[key][0]], demo_image_grid, dino.patch_size)
+            indices_sampled_points_2d[key].append(dino.pixel_to_idx([row, col], demo_image_grid, dino.patch_size))
+        demo_contact_point_index[key] = dino.pixel_to_idx([contact_point_2d[key][1], contact_point_2d[key][0]], demo_image_grid, dino.patch_size)
+        demo_directional_point_index[key] = dino.pixel_to_idx([directional_point_2d[key][1], directional_point_2d[key][0]], demo_image_grid, dino.patch_size)
+
+    
+    camera_serials = [130322273305, 128422270081, 127122270512]
+    best_serial = None
+    min_distance = float('inf')
+    best_inference_contact_point = None
+    best_inference_directional_point = None
+    best_distance_map = None
+
+    for serial in camera_serials:
+        inference_color_image = np.load("resources/" + object_name + "/inference_color_image_" + str(serial) + ".npy")
+        inference_color_image = cv2.cvtColor(inference_color_image, cv2.COLOR_BGR2RGB)
+
+        inference_image_tensor, inference_image_grid = dino.prepare_image(inference_color_image)
+        inference_image_features = dino.extract_features(inference_image_tensor)
+
+        total_distance = 0
+        dist_map = {}
+        contact_pt = {}
+        directional_pt = {}
+
+        for key in indices_sampled_points_2d:
+            dist_map[key] = None
+            for i, point_index in enumerate(indices_sampled_points_2d[key]):
+                distance = dino.compute_feature_distance(point_index,
+                                                         demo_image_features,
+                                                         inference_image_features)
+                distance = np.reshape(distance, (inference_image_grid[0], inference_image_grid[1]))
+                distance = cv2.resize(distance, (inference_image_tensor.shape[2],
+                                                 inference_image_tensor.shape[1]),
+                                                 interpolation=cv2.INTER_CUBIC)
+                threshold = np.percentile(distance, 0.005)
+                distance_mask = distance < threshold
+                distance_mask = distance_mask.astype(np.uint8)
+                distance *= distance_mask
+
+                if dist_map[key] is None:
+                    dist_map[key] = distance
+                else:
+                    dist_map[key] = np.logical_or(dist_map[key], distance>0)
+
+                total_distance += np.sum(distance)
+
+            contact_pt_distance = dino.compute_feature_distance(demo_contact_point_index[key],
+                                                                demo_image_features,
+                                                                inference_image_features)
+            contact_pt_distance = np.reshape(contact_pt_distance, (inference_image_grid[0], inference_image_grid[1]))
+            contact_pt_distance = cv2.resize(contact_pt_distance, (inference_image_tensor.shape[2],
+                                                                 inference_image_tensor.shape[1]),
+                                                                 interpolation=cv2.INTER_CUBIC)
+            contact_pt_threshold = np.percentile(contact_pt_distance, 0.005)
+            contact_pt_distance_mask = contact_pt_distance < contact_pt_threshold
+            contact_pt_distance_mask = contact_pt_distance_mask.astype(np.uint8)
+            contact_pt_distance *= contact_pt_distance_mask
+            contact_pt[key] = np.mean(np.argwhere(contact_pt_distance_mask>0), axis=0)
+
+            directional_pt_distance = dino.compute_feature_distance(demo_directional_point_index[key],
+                                                                   demo_image_features,
+                                                                   inference_image_features)
+            directional_pt_distance = np.reshape(directional_pt_distance, (inference_image_grid[0], inference_image_grid[1]))
+            directional_pt_distance = cv2.resize(directional_pt_distance, (inference_image_tensor.shape[2],
+                                                                       inference_image_tensor.shape[1]),
+                                                                       interpolation=cv2.INTER_CUBIC)
+            directional_pt_threshold = np.percentile(directional_pt_distance, 0.005)
+            directional_pt_distance_mask = directional_pt_distance < directional_pt_threshold
+            directional_pt_distance_mask = directional_pt_distance_mask.astype(np.uint8)
+            directional_pt_distance *= directional_pt_distance_mask 
+            directional_pt[key] = np.mean(np.argwhere(directional_pt_distance_mask>0), axis=0)
+
+            total_distance += np.sum(contact_pt_distance)
+            total_distance += np.sum(directional_pt_distance)
+
+        if total_distance < min_distance:
+            min_distance = total_distance
+            best_serial = serial
+            best_distance_map = dist_map
+            best_inference_contact_point = contact_pt
+            best_inference_directional_point = directional_pt
+
+    print("Best Serial: ", best_serial)
+    inference_color_image = np.load("resources/" + object_name + "/inference_color_image_" + str(best_serial) + ".npy")
+    inference_color_image = cv2.cvtColor(inference_color_image, cv2.COLOR_BGR2RGB)
+
+    distance_map = best_distance_map
+    inference_contact_point = best_inference_contact_point
+    inference_directional_point = best_inference_directional_point
+
+                
 
 
-    '''
-    Compute  the cumulative distance map
-    '''
-    distance_map = {}
-    for key in point_indices:
-        distance_map[key] = None
-        for i, point_index in enumerate(point_indices[key]):
-            distance = dino.compute_feature_distance(point_index, demo_image_features, inference_color_image_features)
-            distance = np.reshape(distance, (inference_color_image_grid[0], inference_color_image_grid[1]))
-            distance = cv2.resize(distance, (inference_color_image_tensor.shape[2], 
-                                            inference_color_image_tensor.shape[1]), interpolation=cv2.INTER_CUBIC)
-            threshold = np.percentile(distance, 0.005)
-            distance = distance < threshold
-
-            if distance_map[key] is None:
-                distance_map[key] = distance
-            else:
-                distance_map[key] = np.logical_or(distance_map[key], distance)
 
 
-    # plt.imshow(inference_color_image)
-    # for key in distance_map:
-    #     plt.imshow(distance_map[key], alpha=0.5)
-    # plt.show()
-
-    contact_point_distance = {}
-    directional_point_distance = {}
-    inference_contact_point = {}
-    inference_directional_point = {}
-    for key in point_indices:
-        contact_point_distance[key] = dino.compute_feature_distance(contact_point_index[key], demo_image_features, inference_color_image_features)
-        contact_point_distance[key] = np.reshape(contact_point_distance[key], (inference_color_image_grid[0], inference_color_image_grid[1]))
-        contact_point_distance[key] = cv2.resize(contact_point_distance[key], (inference_color_image_tensor.shape[2],
-                                             inference_color_image_tensor.shape[1]), interpolation=cv2.INTER_CUBIC)
-        threshold = np.percentile(contact_point_distance[key], 0.005)
-        contact_point_distance[key] = contact_point_distance[key] < threshold   
-
-        directional_point_distance[key] = dino.compute_feature_distance(directional_point_index[key], demo_image_features, inference_color_image_features)
-        directional_point_distance[key] = np.reshape(directional_point_distance[key], (inference_color_image_grid[0], inference_color_image_grid[1]))
-        directional_point_distance[key] = cv2.resize(directional_point_distance[key], (inference_color_image_tensor.shape[2],
-                                                inference_color_image_tensor.shape[1]), interpolation=cv2.INTER_CUBIC)
-        threshold = np.percentile(directional_point_distance[key], 0.005)
-        directional_point_distance[key] = directional_point_distance[key] < threshold
-
-        inference_contact_point[key] = np.mean(np.argwhere(contact_point_distance[key]), axis=0)
-        inference_directional_point[key] = np.mean(np.argwhere(directional_point_distance[key]), axis=0)
-
-        cv2.circle(inference_color_image, (int(inference_contact_point[key][1]), int(inference_contact_point[key][0])), 3, (0, 255, 0), -1)
-        cv2.circle(inference_color_image, (int(inference_directional_point[key][1]), int(inference_directional_point[key][0])), 3, (0, 255, 0), -1)
-
-    # display_image(inference_color_image, "Inference Contact Point Overlay")
-
-
-   
     '''
     Compute 2D PCA
     '''
@@ -205,10 +227,11 @@ if __name__ == "__main__":
     '''
     Get Ground Truth Grasp Axes from the user
     '''
-    # intrinsics= np.load("resources/" + object_name + "/camera_intrinsic.npy")
-    intrinsics = np.load("resources/dino/camera_intrinsic_127122270512.npy")
-    # inference_depth_image = np.load("resources/" + object_name + "/inference_depth_image.npy")
-    inference_depth_image = np.load("resources/dino/inference_depth_image_127122270512.npy")
+
+    intrinsics = np.load("resources/" + object_name + "/camera_intrinsic_" + str(best_serial) + ".npy")
+    inference_depth_image = np.load("resources/" + object_name + "/inference_depth_image_" + str(best_serial) + ".npy")
+    inference_color_image = np.load("resources/" + object_name + "/inference_color_image_" + str(best_serial) + ".npy")
+    inference_color_image = cv2.cvtColor(inference_color_image, cv2.COLOR_BGR2RGB)
     inference_depth_image = inference_depth_image.astype(np.float32)
     inference_depth_image *= 0.0001 # D4054
     # inference_depth_image *= 0.00025
