@@ -95,9 +95,11 @@ if __name__ == "__main__":
                          frames_dict[key]["intrinsics"]['ppy'],
                          frames_dict[key]["intrinsics"]['fx'],
                          frames_dict[key]["intrinsics"]['fy']]
+            distortion = [frames_dict[key]["intrinsics"]['coeffs']]
             np.save("resources/" + object_name + "/inference_color_image_" + key + ".npy", color_image)
             np.save("resources/" + object_name + "/inference_depth_image_" + key + ".npy", depth_image)
             np.save("resources/" + object_name + "/camera_intrinsic_" + key + ".npy", intrinsic)
+            np.save("resources/" + object_name + "/camera_distortion_" + key + ".npy", distortion)
     
 
 
@@ -123,7 +125,7 @@ if __name__ == "__main__":
         demo_directional_point_index[key] = dino.pixel_to_idx([directional_point_2d[key][1], directional_point_2d[key][0]], demo_image_grid, dino.patch_size)
 
     
-    camera_serials = [130322273305, 128422270081, 127122270512]
+    camera_serials = [130322273305, 126122270307, 126122270722]
     best_serial = None
     min_distance = float('inf')
     best_inference_contact_point = None
