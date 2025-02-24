@@ -129,6 +129,24 @@ def transform_point_cloud(point_cloud, extrinsic_matrix):
 
     return transformed_points[:, :3]
 
+def get_transformation_from_base_to_wrist_camera(eef_pose: list) -> np.ndarray:
+    ## Transformation between the base and the wrist camera
+    T_base2eef = np.eye(4)
+    T_base2eef[0:3, 0:3] = cv2.Rodrigues(eef_pose[3:6])[0]
+    T_base2eef[0:3, 3] = eef_pose[0:3]
+
+    ## Transformation between the wrist camera and the end effector
+    T_eef2cam = np.eye(4)
+    T_eef2cam[0:3, 3] = np.array([-.01, -.08, 0.01])
+    ## Make rotaion matrix with 15 degree rotation aroud x axis
+    T_eef2cam[0:3, 0:3] = cv2.Rodrigues(np.array([-np.pi/12, 0, 0]))[0]
+
+    ## Transformation between the base and the wrist camera
+    T_w2cam = T_base2eef @ T_eef2cam
+
+    return T_w2cam
+
+
 if __name__ == "__main__":
 
     # Generate and save Charuco board image
