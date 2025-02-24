@@ -1,5 +1,6 @@
 import cv2
 import sys
+import time
 import numpy as np
 
 from typing import Tuple
@@ -11,23 +12,21 @@ def generate_and_save_charuco_board(
     """Generate a Charuco board image and save it to a file."""
     squares_verticle = 7
     squares_horizontal = 5
-    square_length = 30 # pixels
-    marker_length = 20 # pixels
+    square_length = 0.04 # meters
+    marker_length = 0.03 # meters
     margin_size = 20 # pixels
-
-    img_size = tuple(i * square_length + 2 * margin_size for i in (squares_verticle, squares_horizontal))
 
     aruco_dict = cv2.aruco.getPredefinedDictionary(aruco_dict_id)
     board = cv2.aruco.CharucoBoard(
-        (squares_verticle, squares_horizontal), 
+        (squares_horizontal, squares_verticle), 
         square_length, 
         marker_length, 
         aruco_dict
         )
-    size_ratio = squares_horizontal/squares_verticle
+    size_ratio = squares_verticle/squares_horizontal
     board_image = cv2.aruco.CharucoBoard.generateImage(
-        board, 
-        img_size, 
+        board,
+        (640, int(640*size_ratio)), 
         marginSize=margin_size
         )
     ## Save the image
@@ -50,6 +49,7 @@ def detect_charuco_corners(image : np.ndarray,
         if image_name is not None:
             output_image = image.copy()
             cv2.aruco.drawDetectedMarkers(output_image, corners, ids)
+            image_name = str(time.time()) + image_name
             cv2.imwrite(image_name, output_image)
             print(f"Detected markers saved as {image_name}")
 
@@ -109,8 +109,8 @@ def get_transformation_matrix_between_camera1_and_camera2(image1 : np.ndarray,
                                                           aruco_dict : cv2.aruco.Dictionary,
                                                           aruco_params : cv2.aruco.DetectorParameters,) -> np.ndarray:
     ## Detect the Charuco corners in the images
-    charuco_corners1, charuco_ids1 = detect_charuco_corners(image1, board, aruco_dict, aruco_params)
-    charuco_corners2, charuco_ids2 = detect_charuco_corners(image2, board, aruco_dict, aruco_params)
+    charuco_corners1, charuco_ids1 = detect_charuco_corners(image1, board, aruco_dict, aruco_params, "detections1.jpg")
+    charuco_corners2, charuco_ids2 = detect_charuco_corners(image2, board, aruco_dict, aruco_params, "detections2.jpg")
 
     if charuco_corners1 is None or charuco_corners2 is None:
         print("Charuco corners detection failed.")
@@ -132,21 +132,16 @@ def transform_point_cloud(point_cloud, extrinsic_matrix):
 if __name__ == "__main__":
 
     # Generate and save Charuco board image
-    board, aruco_dict = generate_and_save_charuco_board("charuco_board.png")
+    board, aruco_dict = generate_and_save_charuco_board("camera_calibration_utils/charuco_board.png")
 
-    ## Placeholder till I print new board and get new Images.
-    board = cv2.aruco.CharucoBoard((5, 7), 0.04, 0.03, aruco_dict)
+    camera_num_2_serial = {
+        1 : "130322273305",
+        2 : "128422270081",
+        3 : "127122270512"
+    }
 
     ## Load Images
-
-    '''
-    Camera Serial to number 
-    130322273305 -> 1
-    128422270081 -> 2
-    127122270512 -> 3
-    '''
-
-    camera_data = np.load("mohit/multi_camera.npy", allow_pickle=True).item()
+    camera_data = np.load("multi_camera_calibration.npy", allow_pickle=True).item()
     rgb1 = camera_data['130322273305']['color']
     rgb2 = camera_data['128422270081']['color']
     rgb3 = camera_data['127122270512']['color']
@@ -172,7 +167,7 @@ if __name__ == "__main__":
                                     [0, 0, 1]])
     
     aruco_params = cv2.aruco.DetectorParameters()
-    distortion_coeffs = np.zeros((5, 1))  # Assuming no distortion for simplicity
+    distortion_coeffs = np.zeros((5, 1))  # Assuming no distortion
 
     transformation_matrix_1_2 = get_transformation_matrix_between_camera1_and_camera2(
         rgb1, rgb2, camera1_intrinsics, camera2_intrinsics, distortion_coeffs, distortion_coeffs, board, aruco_dict, aruco_params
@@ -187,6 +182,7 @@ if __name__ == "__main__":
 
     print("Transformation Matrix from Camera 1 to Camera 3:")
     print(transformation_matrix_1_3)
+
     ## Save the transformation matrix for later use.
-    np.save("transformation_matrix_1_2.npy", transformation_matrix_1_2)
-    np.save("transformation_matrix_1_3.npy", transformation_matrix_1_3)
+    np.save("camera_calibration_utils/transformation_matrix_1_2.npy", transformation_matrix_1_2)
+    np.save("camera_calibration_utils/transformation_matrix_1_3.npy", transformation_matrix_1_3)
