@@ -132,7 +132,7 @@ def transform_point_cloud(point_cloud, extrinsic_matrix):
 def get_transformation_from_base_to_wrist_camera(eef_pose: list) -> np.ndarray:
     ## Transformation between the base and the wrist camera
     T_base2eef = np.eye(4)
-    T_base2eef[0:3, 0:3] = cv2.Rodrigues(eef_pose[3:6])[0]
+    T_base2eef[0:3, 0:3] = cv2.Rodrigues(np.array(eef_pose[3:6]))[0]
     T_base2eef[0:3, 3] = eef_pose[0:3]
 
     ## Transformation between the wrist camera and the end effector
@@ -147,9 +147,66 @@ def get_transformation_from_base_to_wrist_camera(eef_pose: list) -> np.ndarray:
     return T_w2cam
 
 
-if __name__ == "__main__":
+# if __name__ == "__main__":
 
     # Generate and save Charuco board image
+    # board, aruco_dict = generate_and_save_charuco_board("camera_calibration_utils/charuco_board.png")
+
+    # camera_num_2_serial = {
+    #     1 : "130322273305",
+    #     2 : "128422270081",
+    #     3 : "127122270512"
+    # }
+
+    # ## Load Images
+    # camera_data = np.load("multi_camera_calibration.npy", allow_pickle=True).item()
+    # rgb1 = camera_data['130322273305']['color']
+    # rgb2 = camera_data['128422270081']['color']
+    # rgb3 = camera_data['127122270512']['color']
+
+    # camera1_intrinsics = camera_data['130322273305']['intrinsics']
+    # camera2_intrinsics = camera_data['128422270081']['intrinsics']
+    # camera3_intrinsics = camera_data['127122270512']['intrinsics']
+
+    # cx1, cy1, fx1, fy1 = camera1_intrinsics['ppx'], camera1_intrinsics['ppy'], camera1_intrinsics['fx'], camera1_intrinsics['fy']
+    # cx2, cy2, fx2, fy2 = camera2_intrinsics['ppx'], camera2_intrinsics['ppy'], camera2_intrinsics['fx'], camera2_intrinsics['fy']   
+    # cx3, cy3, fx3, fy3 = camera3_intrinsics['ppx'], camera3_intrinsics['ppy'], camera3_intrinsics['fx'], camera3_intrinsics['fy']
+
+    # camera1_intrinsics = np.array([[fx1, 0, cx1],
+    #                                 [0, fy1, cy1],
+    #                                 [0, 0, 1]])
+
+    # camera2_intrinsics = np.array([[fx2, 0, cx2],
+    #                                 [0, fy2, cy2],
+    #                                 [0, 0, 1]])
+
+    # camera3_intrinsics = np.array([[fx3, 0, cx3],
+    #                                 [0, fy3, cy3],
+    #                                 [0, 0, 1]])
+    
+    # aruco_params = cv2.aruco.DetectorParameters()
+    # distortion_coeffs = np.zeros((5, 1))  # Assuming no distortion
+
+    # transformation_matrix_1_2 = get_transformation_matrix_between_camera1_and_camera2(
+    #     rgb1, rgb2, camera1_intrinsics, camera2_intrinsics, distortion_coeffs, distortion_coeffs, board, aruco_dict, aruco_params
+    # )
+
+    # transformation_matrix_1_3 = get_transformation_matrix_between_camera1_and_camera2(
+    #     rgb1, rgb3, camera1_intrinsics, camera3_intrinsics, distortion_coeffs, distortion_coeffs, board, aruco_dict, aruco_params
+    # )
+
+    # print("Transformation Matrix from Camera 1 to Camera 2:")
+    # print(transformation_matrix_1_2)
+
+    # print("Transformation Matrix from Camera 1 to Camera 3:")
+    # print(transformation_matrix_1_3)
+
+    # ## Save the transformation matrix for later use.
+    # np.save("camera_calibration_utils/transformation_matrix_1_2.npy", transformation_matrix_1_2)
+    # np.save("camera_calibration_utils/transformation_matrix_1_3.npy", transformation_matrix_1_3)
+
+if __name__ == "__main__":
+
     board, aruco_dict = generate_and_save_charuco_board("camera_calibration_utils/charuco_board.png")
 
     camera_num_2_serial = {
@@ -158,19 +215,24 @@ if __name__ == "__main__":
         3 : "127122270512"
     }
 
-    ## Load Images
-    camera_data = np.load("multi_camera_calibration.npy", allow_pickle=True).item()
-    rgb1 = camera_data['130322273305']['color']
-    rgb2 = camera_data['128422270081']['color']
-    rgb3 = camera_data['127122270512']['color']
+    # ## Load Images
+    rgb1 = np.load('mohit/robot_camera_calibration/color_image_130322273305.npy')
+    rgb2 = np.load('mohit/robot_camera_calibration/color_image_126122270307.npy')
 
-    camera1_intrinsics = camera_data['130322273305']['intrinsics']
-    camera2_intrinsics = camera_data['128422270081']['intrinsics']
-    camera3_intrinsics = camera_data['127122270512']['intrinsics']
+    ## Flip rgb to bgr
+    rgb1 = cv2.cvtColor(rgb1, cv2.COLOR_RGB2BGR)
+    rgb2 = cv2.cvtColor(rgb2, cv2.COLOR_RGB2BGR)
 
-    cx1, cy1, fx1, fy1 = camera1_intrinsics['ppx'], camera1_intrinsics['ppy'], camera1_intrinsics['fx'], camera1_intrinsics['fy']
-    cx2, cy2, fx2, fy2 = camera2_intrinsics['ppx'], camera2_intrinsics['ppy'], camera2_intrinsics['fx'], camera2_intrinsics['fy']   
-    cx3, cy3, fx3, fy3 = camera3_intrinsics['ppx'], camera3_intrinsics['ppy'], camera3_intrinsics['fx'], camera3_intrinsics['fy']
+    depth1 = np.load('mohit/robot_camera_calibration/depth_image_130322273305.npy')
+    depth2 = np.load('mohit/robot_camera_calibration/depth_image_126122270307.npy')
+
+    camera1_intrinsics = np.load('mohit/robot_camera_calibration/intrinsic_130322273305.npy')
+    camera2_intrinsics = np.load('mohit/robot_camera_calibration/intrinsic_126122270307.npy')
+
+    # print(camera1_intrinsics)
+
+    cx1, cy1, fx1, fy1 = camera1_intrinsics[0], camera1_intrinsics[1], camera1_intrinsics[2], camera1_intrinsics[3]
+    cx2, cy2, fx2, fy2 = camera2_intrinsics[0], camera2_intrinsics[1], camera2_intrinsics[2], camera2_intrinsics[3]
 
     camera1_intrinsics = np.array([[fx1, 0, cx1],
                                     [0, fy1, cy1],
@@ -179,28 +241,83 @@ if __name__ == "__main__":
     camera2_intrinsics = np.array([[fx2, 0, cx2],
                                     [0, fy2, cy2],
                                     [0, 0, 1]])
-
-    camera3_intrinsics = np.array([[fx3, 0, cx3],
-                                    [0, fy3, cy3],
-                                    [0, 0, 1]])
     
     aruco_params = cv2.aruco.DetectorParameters()
     distortion_coeffs = np.zeros((5, 1))  # Assuming no distortion
 
-    transformation_matrix_1_2 = get_transformation_matrix_between_camera1_and_camera2(
-        rgb1, rgb2, camera1_intrinsics, camera2_intrinsics, distortion_coeffs, distortion_coeffs, board, aruco_dict, aruco_params
+    # transformation_matrix_1_2 = get_transformation_matrix_between_camera1_and_camera2(
+    #     rgb1, rgb2, camera1_intrinsics, camera2_intrinsics, distortion_coeffs, distortion_coeffs, board, aruco_dict, aruco_params
+    # )
+
+    # np.save('transformation_martix_1_wrist_camera.npy', transformation_matrix_1_2)
+
+    transformation_matrix_1_2 = np.load('transformation_martix_1_wrist_camera.npy')
+    ## Create coordinate frame
+    import open3d as o3d
+    origin_coordinate = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+
+    wrist_cam_coordinate = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+    wrist_cam_coordinate.transform(transformation_matrix_1_2)
+
+    ## Make the point clouds
+    rgbd_image1 = o3d.geometry.RGBDImage.create_from_color_and_depth(
+        o3d.geometry.Image(rgb1), o3d.geometry.Image(depth1), depth_scale=1/0.0001, depth_trunc=0.5, convert_rgb_to_intensity=False
     )
-
-    transformation_matrix_1_3 = get_transformation_matrix_between_camera1_and_camera2(
-        rgb1, rgb3, camera1_intrinsics, camera3_intrinsics, distortion_coeffs, distortion_coeffs, board, aruco_dict, aruco_params
+    rgbd_image2 = o3d.geometry.RGBDImage.create_from_color_and_depth(
+        o3d.geometry.Image(rgb2), o3d.geometry.Image(depth2), depth_scale=1/0.0001, depth_trunc=0.5, convert_rgb_to_intensity=False
     )
+    o3d_intrinsic1 = o3d.camera.PinholeCameraIntrinsic()
+    o3d_intrinsic1.set_intrinsics(640, 480, fx1, fy1, cx1, cy1)
+    o3d_intrinsic2 = o3d.camera.PinholeCameraIntrinsic()
+    o3d_intrinsic2.set_intrinsics(640, 480, fx2, fy2, cx2, cy2)
 
-    print("Transformation Matrix from Camera 1 to Camera 2:")
-    print(transformation_matrix_1_2)
+    pcd1 = o3d.geometry.PointCloud.create_from_rgbd_image(
+        rgbd_image1, o3d_intrinsic1
+    )
+    pcd2 = o3d.geometry.PointCloud.create_from_rgbd_image(
+        rgbd_image2, o3d_intrinsic2
+    )   
+    pcd1.translate([0, 0, 0.04])
+    pcd2.translate([0, 0, 0.04])
+    # pcd2.transform(transformation_matrix_1_2)
 
-    print("Transformation Matrix from Camera 1 to Camera 3:")
-    print(transformation_matrix_1_3)
 
-    ## Save the transformation matrix for later use.
-    np.save("camera_calibration_utils/transformation_matrix_1_2.npy", transformation_matrix_1_2)
-    np.save("camera_calibration_utils/transformation_matrix_1_3.npy", transformation_matrix_1_3)
+    ## Get Robot to Camera Transformation
+    from robot import RobotController
+    robot = RobotController('lightning', False, False)
+    eef_pose = robot.get_eff_pose()
+    T_w2cam = get_transformation_from_base_to_wrist_camera(eef_pose)
+
+    wrist_cam_coordinate = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+    wrist_cam_coordinate.transform(T_w2cam)
+    pcd2.transform(T_w2cam) 
+
+    T_robot2cam = T_w2cam @ np.linalg.inv(transformation_matrix_1_2)
+    # T_robot2cam = 
+    robot_2_cam = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+    robot_2_cam.transform(T_robot2cam)
+
+    o3d.visualization.draw_geometries([origin_coordinate, 
+                                       wrist_cam_coordinate,
+                                       pcd2,
+                                       robot_2_cam
+                                       #pcd1, 
+                                       #pcd2
+                                       ])
+    
+    np.save('transformation_matrix_wrist_camera.npy', T_robot2cam)
+
+
+    # transformation_matrix_1_3 = get_transformation_matrix_between_camera1_and_camera2(
+    #     rgb1, rgb3, camera1_intrinsics, camera3_intrinsics, distortion_coeffs, distortion_coeffs, board, aruco_dict, aruco_params
+    # )
+
+    # print("Transformation Matrix from Camera 1 to Camera 2:")
+    # print(transformation_matrix_1_2)
+
+    # print("Transformation Matrix from Camera 1 to Camera 3:")
+    # print(transformation_matrix_1_3)
+
+    # ## Save the transformation matrix for later use.
+    # np.save("camera_calibration_utils/transformation_matrix_1_2.npy", transformation_matrix_1_2)
+    # np.save("camera_calibration_utils/transformation_matrix_1_3.npy", transformation_matrix_1_3)

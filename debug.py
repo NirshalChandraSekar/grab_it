@@ -22,17 +22,27 @@ if __name__ == "__main__":
     # np.save("mohit/"+str(number)+"/intrinsic.npy", intrinsic)
 
     multi_camera = InferenceMultiCamera()
-    frames = multi_camera.get_frames()
+    frames_dict = multi_camera.get_frames()
 
-    for serial, data in frames.items():
-        color_image = data['color']
-        depth_image = data['depth']
-        intrinsic = data['intrinsics']
-
-        cv2.imshow(str(serial) + " color", color_image)
-        cv2.imshow(str(serial) + " depth", depth_image)
+    for key in frames_dict:
+        color_image = frames_dict[key]["color"]
+        depth_image = frames_dict[key]["depth"]
+        intrinsic = [frames_dict[key]["intrinsics"]['ppx'],
+                        frames_dict[key]["intrinsics"]['ppy'],
+                        frames_dict[key]["intrinsics"]['fx'],
+                        frames_dict[key]["intrinsics"]['fy']]
+        
+        np.save("mohit/robot_camera_calibration/color_image_"+str(key)+".npy", color_image) 
+        np.save("mohit/robot_camera_calibration/depth_image_"+str(key)+".npy", depth_image)
+        cv2.imshow("color", color_image)
+        cv2.imshow("depth", depth_image)
         cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        np.save("mohit/robot_camera_calibration/intrinsic_"+str(key)+".npy", intrinsic)
+        print("Saved Camera "+str(key))
+        
 
-    cv2.destroyAllWindows()
-    
-    np.save("mohit/multi_camera.npy", frames)
+
+    # cv2.destroyAllWindows()
+
+    # np.save("mohit/multi_camera_pouch.npy", frames)
