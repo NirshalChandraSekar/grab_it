@@ -1,6 +1,6 @@
 from hand_traking import detect_hand_keypoints, sample_points_on_line
-from viz import pca_2d, pca_3d, get_gt, visualize_rotated_axes
 from inference_stream import InferenceStream, InferenceMultiCamera
+from viz import pca_2d, pca_3d, get_gt, visualize_gripper
 from segmentation import image_segmentation
 from features import find_best_camera
 from dino_functions import Dinov2
@@ -20,7 +20,7 @@ def display_image(image, window_name="Image"):
 
 
 if __name__ == "__main__":
-    object_name = "pouch"
+    object_name = "pouch4"
 
     '''
     Read the demonstration images. Ideally we will have to give the video as input.
@@ -30,8 +30,8 @@ if __name__ == "__main__":
     demo_image = cv2.imread("resources/" + object_name + "/demo.jpg")
     demo_image_hand = cv2.imread("resources/" + object_name + "/demo_hand.jpg")
 
-    demo_image = cv2.resize(demo_image, (demo_image.shape[1]//5,demo_image.shape[0]//5))
-    demo_image_hand = cv2.resize(demo_image_hand, (demo_image_hand.shape[1]//5,demo_image_hand.shape[0]//5))
+    demo_image = cv2.resize(demo_image, (demo_image.shape[1]//3,demo_image.shape[0]//3))
+    demo_image_hand = cv2.resize(demo_image_hand, (demo_image_hand.shape[1]//3,demo_image_hand.shape[0]//3))
 
 
 
@@ -170,6 +170,7 @@ if __name__ == "__main__":
            inference_directional_point)
     
     print("Grasp Axes: ", grasp_axes)
+    np.save("resources/"+object_name+"/grasp_pose_"+object_name+".npy", grasp_axes)
     
     
 
@@ -181,14 +182,14 @@ if __name__ == "__main__":
     center_error = {}
     for key in gt_grasp_axes:
         center_gt = gt_grasp_axes[key][0:3,3]
-        center_pred = grasp_axes[key]['center']
+        center_pred = grasp_axes[key][0:3,3]
         center_error[key] = np.linalg.norm(center_gt - center_pred)
 
     # Error Between the x axis
     approach_axis_error = {}
     for key in gt_grasp_axes:
         gt_x = gt_grasp_axes[key][0:3,0]
-        pred_x = grasp_axes[key]['axes'][:,0]
+        pred_x = grasp_axes[key][0:3,0]
         # approach_axis_error[key] = np.arccos(np.dot(gt_x, pred_x)/(np.linalg.norm(gt_x)*np.linalg.norm(pred_x)))
         approach_axis_error[key] = np.arccos(np.dot(gt_x, pred_x))
         # convert to degrees
@@ -202,4 +203,6 @@ if __name__ == "__main__":
     Visualize the gripper
     '''
 
+    # visualize_gripper(inference_color_image, inference_depth_image, intrinsics, grasp_axes)
+    
 

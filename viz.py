@@ -203,10 +203,14 @@ def pca_3d(points, intrinsics_, depth_image, color_image, contact_point, inferen
     for key in grasp_axis:
         grasp_axis[key]['axes'] = grasp_axis[key]['axes'].T
 
+    for key in grasp_axis:
+        transformation_matrix = np.eye(4)
+        transformation_matrix[:3, :3] = grasp_axis[key]['axes']
+        transformation_matrix[:3, 3] = grasp_axis[key]['center']
+        grasp_axis[key] = transformation_matrix
+
     return grasp_axis
 
-import open3d as o3d
-import numpy as np
 
 def get_gt(color_image, depth_image, intrinsics_):
     """
@@ -357,8 +361,33 @@ def get_gt(color_image, depth_image, intrinsics_):
 
 
 def visualize_gripper(color_image, depth_image, intrinsics_, grasp_pose):
-    pass
+    
+    cx, cy, fx, fy = intrinsics_
+    intrinsics = o3d.camera.PinholeCameraIntrinsic(
+        color_image.shape[1],  # Image width
+        color_image.shape[0],  # Image height
+        fx, fy, cx, cy
+    )
 
+    rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(
+        o3d.geometry.Image(color_image),
+        o3d.geometry.Image(depth_image),
+        depth_scale=1.0,
+        depth_trunc=0.5,  # Adjust depth truncation as needed
+        convert_rgb_to_intensity=False
+    )
+
+    pcd = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd_image, intrinsics)
+
+    gripper_mesh = o3d.io.read_triangle_mesh("/home/nirshal/Downloads/ImageToStl.com_2f85_opened_20190924-sep-06-2024-02-25-46-4707-pm/ImageToStl.com_2f85_opened_20190924-sep-06-2024-02-25-46-4707-pm.stl")
+    
+    gripper_mesh.scale(0.0001, gripper_mesh.get_center())
+    rotation = grasp_pose[0]['axes']
+    translation = grasp_pose[0]['center']
+    gripper_mesh.rotate(rotation, center = tuple(translation))
+    gripper_mesh.translate(translation)
+
+    o3d.visualization.draw_geometries([gripper_mesh, pcd])
 
 def visualize_rotated_axes(pcd, imp_pcd, contact_point_3d, axes, angles=[30, 60, 90], scale=0.5):
     geometries = [pcd, imp_pcd]  # Include the original point cloud and important points
