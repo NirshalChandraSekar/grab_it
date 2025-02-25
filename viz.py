@@ -200,6 +200,9 @@ def pca_3d(points, intrinsics_, depth_image, color_image, contact_point, inferen
     # Visualize the point cloud and PCA axes
     o3d.visualization.draw_geometries(objects_to_visualize)
 
+    for key in grasp_axis:
+        grasp_axis[key]['axes'] = grasp_axis[key]['axes'].T
+
     return grasp_axis
 
 import open3d as o3d

@@ -38,20 +38,21 @@ if __name__ == "__main__":
     Run Mediapipe on the hand image to get the keypoints of thumb tip and thumb ip
     '''
     keypoints = detect_hand_keypoints(demo_image_hand)
+    print("Keypoints: ", keypoints)
     keypoint_overlay = demo_image.copy()
     contact_point_2d = {}
     directional_point_2d = {}
 
     for key in keypoints:
+        color = (0, 0, 255) if key == 0 else (255, 0, 0)
         contact_point_2d[key] = [int(abs(keypoints[key]["thumb_tip"][0]+keypoints[key]["thumb_ip"][0])/2),
                               int(abs(keypoints[key]["thumb_tip"][1]+keypoints[key]["thumb_ip"][1])/2)]
         directional_point_2d[key] = keypoints[key]["thumb_tip"]
-        cv2.circle(keypoint_overlay, keypoints[key]["thumb_tip"], 3, (0, 0, 255), -1)
-        cv2.circle(keypoint_overlay, keypoints[key]["thumb_ip"], 3, (0, 0, 255),  -1)
+        cv2.circle(keypoint_overlay, keypoints[key]["thumb_tip"], 3, color, -1)
+        cv2.circle(keypoint_overlay, keypoints[key]["thumb_ip"], 3, color,  -1)
         cv2.circle(keypoint_overlay, contact_point_2d[key], 3, (0, 255, 0), -1)
 
-    # display_image(keypoint_overlay, "Hand Keypoints Overlay")
-
+    
 
     checkpoint = "/home/nirshal/codes/sam2/checkpoints/sam2.1_hiera_large.pt"
     config = "configs/sam2.1/sam2.1_hiera_l.yaml"
@@ -65,8 +66,8 @@ if __name__ == "__main__":
     sampled_points_2d = {}
     for key in keypoints:
         sampled_points_2d[key] = sample_points_on_line(keypoints[key]["thumb_tip"], keypoints[key]["thumb_ip"], mask)
-        for point in sampled_points_2d[key]:
-            cv2.circle(keypoint_overlay, point, 3, (0, 255, 0), -1)
+        # for point in sampled_points_2d[key]:
+        #     cv2.circle(keypoint_overlay, point, 3, (0, 255, 0), -1)
 
     # display_image(keypoint_overlay, "Sampled Points Overlay")
 
@@ -230,6 +231,11 @@ if __name__ == "__main__":
     Get Ground Truth Grasp Axes from the user
     '''
 
+    print("Color of key 0 is red and key 1 is blue")
+
+    display_image(keypoint_overlay, "Hand Keypoints Overlay")
+
+
     intrinsics = np.load("resources/" + object_name + "/camera_intrinsic_" + str(best_serial) + ".npy")
     inference_depth_image = np.load("resources/" + object_name + "/inference_depth_image_" + str(best_serial) + ".npy")
     inference_color_image = np.load("resources/" + object_name + "/inference_color_image_" + str(best_serial) + ".npy")
@@ -260,9 +266,30 @@ if __name__ == "__main__":
     
     print("Grasp Axes: ", grasp_axes)
     
+    
+
     '''
-    Visualize the rotated axes
+    Computer Errors
     '''
-    # visualize_rotated_axes(pcd, imp_pcd, contact_point_3d, axes)
+
+    # Error Between the Center Points
+    center_error = {}
+    for key in gt_grasp_axes:
+        center_gt = gt_grasp_axes[key][0:3,3]
+        center_pred = grasp_axes[key]['center']
+        center_error[key] = np.linalg.norm(center_gt - center_pred)
+
+    # Error Between the x axis
+    approach_axis_error = {}
+    for key in gt_grasp_axes:
+        gt_x = gt_grasp_axes[key][0:3,0]
+        pred_x = grasp_axes[key]['axes'][:,0]
+        # approach_axis_error[key] = np.arccos(np.dot(gt_x, pred_x)/(np.linalg.norm(gt_x)*np.linalg.norm(pred_x)))
+        approach_axis_error[key] = np.arccos(np.dot(gt_x, pred_x))
+        # convert to degrees
+        approach_axis_error[key] = np.degrees(approach_axis_error[key])
+
+    print("Center Error: ", center_error)
+    print("Approach Axis Error: ", approach_axis_error)
 
 

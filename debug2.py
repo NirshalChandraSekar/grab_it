@@ -105,7 +105,17 @@ def main():
     print("\nFinal Transformation Matrix (Relative to Default Frame):")
     print(transformation)
 
+
     vis.destroy_window()  # Close window
+    return transformation
 
 if __name__ == "__main__":
-    main()
+    transformation = main()
+    '''
+    plot this transforamtion in open 3d
+    '''
+    # Create a new coordinate frame at the origin
+    new_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.5)
+    second_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.5)
+    second_frame.transform(transformation)
+    o3d.visualization.draw_geometries([new_frame, second_frame])
