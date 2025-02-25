@@ -356,6 +356,10 @@ def get_gt(color_image, depth_image, intrinsics_):
     return transformation
 
 
+def visualize_gripper(color_image, depth_image, intrinsics_, grasp_pose):
+    pass
+
+
 def visualize_rotated_axes(pcd, imp_pcd, contact_point_3d, axes, angles=[30, 60, 90], scale=0.5):
     geometries = [pcd, imp_pcd]  # Include the original point cloud and important points
 
