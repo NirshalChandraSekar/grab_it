@@ -3,10 +3,14 @@ import cv2
 import numpy as np
 import torch
 from inference_stream import InferenceStream, InferenceMultiCamera
+import os
 
 if __name__ == "__main__":
 
+    test_number = "1"
     object_name = "camera_calibration"
+    if not os.path.exists("resources/" + object_name +  "/" + test_number):
+        os.makedirs("resources/" + object_name +  "/" + test_number)
     stream = InferenceMultiCamera()
     frames_dict = stream.get_frames()
     for key in frames_dict:
@@ -17,10 +21,14 @@ if __name__ == "__main__":
                         frames_dict[key]["intrinsics"]['fx'],
                         frames_dict[key]["intrinsics"]['fy']]
         distortion = [frames_dict[key]["intrinsics"]['coeffs']]
-        np.save("resources/" + object_name + "/inference_color_image_" + key + ".npy", color_image)
-        np.save("resources/" + object_name + "/inference_depth_image_" + key + ".npy", depth_image)
-        np.save("resources/" + object_name + "/camera_intrinsic_" + key + ".npy", intrinsic)
-        np.save("resources/" + object_name + "/camera_distortion_" + key + ".npy", distortion)
+        np.save("resources/" + object_name +  "/" + test_number + "/inference_color_image_" + key + ".npy", color_image)
+        np.save("resources/" + object_name +  "/" + test_number + "/inference_depth_image_" + key + ".npy", depth_image)
+        np.save("resources/" + object_name +  "/" + test_number + "/camera_intrinsic_" + key + ".npy", intrinsic)
+        np.save("resources/" + object_name +  "/" + test_number + "/camera_distortion_" + key + ".npy", distortion)
+        cv2.imshow("color", color_image)
+        cv2.imshow("depth", depth_image)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
     
 
 
