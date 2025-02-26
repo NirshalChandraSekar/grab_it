@@ -58,7 +58,7 @@ def pca_2d(pixels, center, image):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-# 
+
 def pca_3d(points, intrinsics_, depth_image, color_image, contact_point, inference_directional_point):
     # Extract camera intrinsic parameters
     cx, cy, fx, fy = intrinsics_
@@ -75,101 +75,89 @@ def pca_3d(points, intrinsics_, depth_image, color_image, contact_point, inferen
         o3d.geometry.Image(color_image),
         o3d.geometry.Image(depth_image),
         depth_scale=1.0,
-        depth_trunc=3.0,  # Adjust depth truncation as needed
+        depth_trunc=0.5,  # Adjust depth truncation as needed
         convert_rgb_to_intensity=False
     )
 
     # Create point cloud from RGBD image
     pcd = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd_image, intrinsics)
 
-    # Initialize dictionaries to store 3D points and axes
-    points_3d = {}
-    contact_point_3d = {}
-    directional_point_3d = {}
-    grasp_axis = {}
-
     # Convert 2D points to 3D and filter invalid points
-    for key in points:
-        v_coords = points[key][:, 0]  # v-coordinates (rows)
-        u_coords = points[key][:, 1]  # u-coordinates (columns)
+    v_coords = points[:, 0]  # v-coordinates (rows)
+    u_coords = points[:, 1]  # u-coordinates (columns)
 
-        # Initialize lists to store valid 3D points
-        valid_x = []
-        valid_y = []
-        valid_z = []
+    valid_x, valid_y, valid_z = [], [], []
 
-        # Convert each 2D point to 3D
-        for v, u in zip(v_coords, u_coords):
-            z = depth_image[int(v), int(u)]  # Depth value at (v, u)
+    # Convert each 2D point to 3D
+    for v, u in zip(v_coords, u_coords):
+        z = depth_image[int(v), int(u)]  # Depth value at (v, u)
 
-            # Check if depth value is valid
-            if np.isfinite(z) and z > 0 and z < 3:  # Adjust depth truncation as needed
-                x = (u - cx) * z / fx  # X coordinate
-                y = (v - cy) * z / fy  # Y coordinate
-                valid_x.append(x)
-                valid_y.append(y)
-                valid_z.append(z)
+        # Check if depth value is valid
+        if np.isfinite(z) and 0 < z < 3:  # Adjust depth truncation as needed
+            x = (u - cx) * z / fx  # X coordinate
+            y = (v - cy) * z / fy  # Y coordinate
+            valid_x.append(x)
+            valid_y.append(y)
+            valid_z.append(z)
 
-        # Store valid 3D points
-        points_3d[key] = np.column_stack([valid_x, valid_y, valid_z])
+    # Store valid 3D points
+    points_3d = np.column_stack([valid_x, valid_y, valid_z])
 
-        # Convert contact point to 3D
-        z_contact = depth_image[int(contact_point[key][0]), int(contact_point[key][1])]
-        if np.isfinite(z_contact) and z_contact > 0 and z_contact < 3:
-            contact_point_3d[key] = [
-                (contact_point[key][1] - cx) * z_contact / fx,
-                (contact_point[key][0] - cy) * z_contact / fy,
-                z_contact
-            ]
-        else:
-            contact_point_3d[key] = None  # Mark as invalid
+    # Convert contact point to 3D
+    z_contact = depth_image[int(contact_point[0]), int(contact_point[1])]
+    print('debug z contact', z_contact)
+    if np.isfinite(z_contact) and 0 < z_contact < 0.5:
+        contact_point_3d = np.array([
+            (contact_point[1] - cx) * z_contact / fx,
+            (contact_point[0] - cy) * z_contact / fy,
+            z_contact
+        ])
+    else:
+        contact_point_3d = None  # Mark as invalid
 
-        # Convert directional point to 3D
-        z_dir = depth_image[int(inference_directional_point[key][0]), int(inference_directional_point[key][1])]
-        if np.isfinite(z_dir) and z_dir > 0 and z_dir < 3:
-            directional_point_3d[key] = np.array([
-                (inference_directional_point[key][1] - cx) * z_dir / fx,
-                (inference_directional_point[key][0] - cy) * z_dir / fy,
-                z_dir
-            ])
-        else:
-            directional_point_3d[key] = None  # Mark as invalid
+    # Convert directional point to 3D
+    z_dir = depth_image[int(inference_directional_point[0]), int(inference_directional_point[1])]
+    print('debug z dir', z_dir)
+    if np.isfinite(z_dir) and 0 < z_dir < 0.5:
+        directional_point_3d = np.array([
+            (inference_directional_point[1] - cx) * z_dir / fx,
+            (inference_directional_point[0] - cy) * z_dir / fy,
+            z_dir
+        ])
+    else:
+        directional_point_3d = None  # Mark as invalid
 
-    # Compute PCA for each set of 3D points
-    for key in points_3d:
-        if len(points_3d[key]) == 0:
-            print(f"No valid 3D points for key {key}. Skipping PCA.")
-            continue
+    # Perform PCA if there are valid points
+    if len(points_3d) == 0:
+        print("No valid 3D points. Skipping PCA.")
+        return None
 
-        # Perform PCA
-        pca = PCA(n_components=3)
-        pca.fit(points_3d[key])
+    # Perform PCA
+    pca = PCA(n_components=3)
+    pca.fit(points_3d)
 
-        # Store PCA results
-        grasp_axis[key] = {
-            'center': contact_point_3d[key],
-            'axes': pca.components_
-        }
+    # Store PCA results
+    grasp_axis = {
+        'center': contact_point_3d,
+        'axes': pca.components_
+    }
 
-        # Adjust the first principal axis to align with the inferred direction
-        if directional_point_3d[key] is not None:
-            dir_vector = directional_point_3d[key] - contact_point_3d[key]
-            if np.dot(dir_vector, grasp_axis[key]['axes'][0]) < 0:
-                grasp_axis[key]['axes'][0] = -grasp_axis[key]['axes'][0]
+    # Adjust the first principal axis to align with the inferred direction
+    if directional_point_3d is not None and contact_point_3d is not None:
+        dir_vector = directional_point_3d - contact_point_3d
+        if np.dot(dir_vector, grasp_axis['axes'][0]) < 0:
+            grasp_axis['axes'][0] = -grasp_axis['axes'][0]
 
-        # Ensure the axes are orthogonal
-        grasp_axis[key]['axes'][1] = np.cross(grasp_axis[key]['axes'][2], grasp_axis[key]['axes'][0])
-        grasp_axis[key]['axes'][1] /= np.linalg.norm(grasp_axis[key]['axes'][1])
-        grasp_axis[key]['axes'][2] = np.cross(grasp_axis[key]['axes'][0], grasp_axis[key]['axes'][1])
+    # Ensure the axes are orthogonal
+    grasp_axis['axes'][1] = np.cross(grasp_axis['axes'][2], grasp_axis['axes'][0])
+    grasp_axis['axes'][1] /= np.linalg.norm(grasp_axis['axes'][1])
+    grasp_axis['axes'][2] = np.cross(grasp_axis['axes'][0], grasp_axis['axes'][1])
+
 
     # Visualize the results
-    axis_lines = {}
-    for key in grasp_axis:
-        if grasp_axis[key]['center'] is None:
-            continue
-
-        center = np.array(grasp_axis[key]['center'])
-        axes = grasp_axis[key]['axes']
+    if grasp_axis['center'] is not None:
+        center = np.array(grasp_axis['center'])
+        axes = grasp_axis['axes']
 
         # Scale the axes for visualization
         scale = 0.5
@@ -182,26 +170,180 @@ def pca_3d(points, intrinsics_, depth_image, color_image, contact_point, inferen
         # Create a line set for visualization
         lines = [[0, 1], [2, 3], [4, 5]]
         colors = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]  # Red, Green, Blue
-        axis_lines[key] = o3d.geometry.LineSet()
-        axis_lines[key].points = o3d.utility.Vector3dVector(axis_points)
-        axis_lines[key].lines = o3d.utility.Vector2iVector(lines)
-        axis_lines[key].colors = o3d.utility.Vector3dVector(colors)
+        axis_lines = o3d.geometry.LineSet()
+        axis_lines.points = o3d.utility.Vector3dVector(axis_points)
+        axis_lines.lines = o3d.utility.Vector2iVector(lines)
+        axis_lines.colors = o3d.utility.Vector3dVector(colors)
 
-    # Create a camera coordinate frame for visualization
-    camera = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])
+        # Create a camera coordinate frame for visualization
+        camera = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])
 
-    # Combine all objects for visualization
-    objects_to_visualize = [pcd, camera]
-    for key in axis_lines:
-        objects_to_visualize.append(axis_lines[key])
+        # Visualize the point cloud and PCA axes
+        o3d.visualization.draw_geometries([pcd, camera, axis_lines])
 
-    # Visualize the point cloud and PCA axes
-    o3d.visualization.draw_geometries(objects_to_visualize)
+    grasp_axis['axes'] = grasp_axis['axes'].T  # Transpose the axes
 
-    return grasp_axis
+    # Convert to transformation matrix
+    transformation_matrix = np.eye(4)
+    transformation_matrix[:3, :3] = grasp_axis['axes']
+    transformation_matrix[:3, 3] = grasp_axis['center']
+    return transformation_matrix
 
-import open3d as o3d
-import numpy as np
+
+
+
+# def pca_3d(points, intrinsics_, depth_image, color_image, contact_point, inference_directional_point):
+#     # Extract camera intrinsic parameters
+#     cx, cy, fx, fy = intrinsics_
+
+#     # Create Open3D camera intrinsic object
+#     intrinsics = o3d.camera.PinholeCameraIntrinsic(
+#         color_image.shape[1],  # Image width
+#         color_image.shape[0],  # Image height
+#         fx, fy, cx, cy
+#     )
+
+#     # Create RGBD image from color and depth
+#     rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(
+#         o3d.geometry.Image(color_image),
+#         o3d.geometry.Image(depth_image),
+#         depth_scale=1.0,
+#         depth_trunc=0.5,  # Adjust depth truncation as needed
+#         convert_rgb_to_intensity=False
+#     )
+
+#     # Create point cloud from RGBD image
+#     pcd = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd_image, intrinsics)
+
+#     # Initialize dictionaries to store 3D points and axes
+#     points_3d = {}
+#     contact_point_3d = {}
+#     directional_point_3d = {}
+#     grasp_axis = {}
+
+#     # Convert 2D points to 3D and filter invalid points
+#     for key in points:
+#         v_coords = points[key][:, 0]  # v-coordinates (rows)
+#         u_coords = points[key][:, 1]  # u-coordinates (columns)
+
+#         # Initialize lists to store valid 3D points
+#         valid_x = []
+#         valid_y = []
+#         valid_z = []
+
+#         # Convert each 2D point to 3D
+#         for v, u in zip(v_coords, u_coords):
+#             z = depth_image[int(v), int(u)]  # Depth value at (v, u)
+
+#             # Check if depth value is valid
+#             if np.isfinite(z) and z > 0 and z < 3:  # Adjust depth truncation as needed
+#                 x = (u - cx) * z / fx  # X coordinate
+#                 y = (v - cy) * z / fy  # Y coordinate
+#                 valid_x.append(x)
+#                 valid_y.append(y)
+#                 valid_z.append(z)
+
+#         # Store valid 3D points
+#         points_3d[key] = np.column_stack([valid_x, valid_y, valid_z])
+
+#         # Convert contact point to 3D
+#         z_contact = depth_image[int(contact_point[key][0]), int(contact_point[key][1])]
+#         print('debug z contact', z_contact)
+#         if np.isfinite(z_contact) and z_contact > 0 and z_contact < 0.5:
+#             contact_point_3d[key] = [
+#                 (contact_point[key][1] - cx) * z_contact / fx,
+#                 (contact_point[key][0] - cy) * z_contact / fy,
+#                 z_contact
+#             ]
+#         else:
+#             contact_point_3d[key] = None  # Mark as invalid
+
+#         # Convert directional point to 3D
+#         z_dir = depth_image[int(inference_directional_point[key][0]), int(inference_directional_point[key][1])]
+#         print('debug z dir', z_dir)
+#         if np.isfinite(z_dir) and z_dir > 0 and z_dir < 0.5:
+#             directional_point_3d[key] = np.array([
+#                 (inference_directional_point[key][1] - cx) * z_dir / fx,
+#                 (inference_directional_point[key][0] - cy) * z_dir / fy,
+#                 z_dir
+#             ])
+#         else:
+#             directional_point_3d[key] = None  # Mark as invalid
+
+#     # Compute PCA for each set of 3D points
+#     for key in points_3d:
+#         if len(points_3d[key]) == 0:
+#             print(f"No valid 3D points for key {key}. Skipping PCA.")
+#             continue
+
+#         # Perform PCA
+#         pca = PCA(n_components=3)
+#         pca.fit(points_3d[key])
+
+#         # Store PCA results
+#         grasp_axis[key] = {
+#             'center': contact_point_3d[key],
+#             'axes': pca.components_
+#         }
+
+#         # Adjust the first principal axis to align with the inferred direction
+#         if directional_point_3d[key] is not None and contact_point_3d[key] is not None:
+#             dir_vector = directional_point_3d[key] - contact_point_3d[key]
+#             if np.dot(dir_vector, grasp_axis[key]['axes'][0]) < 0:
+#                 grasp_axis[key]['axes'][0] = -grasp_axis[key]['axes'][0]
+
+#         # Ensure the axes are orthogonal
+#         grasp_axis[key]['axes'][1] = np.cross(grasp_axis[key]['axes'][2], grasp_axis[key]['axes'][0])
+#         grasp_axis[key]['axes'][1] /= np.linalg.norm(grasp_axis[key]['axes'][1])
+#         grasp_axis[key]['axes'][2] = np.cross(grasp_axis[key]['axes'][0], grasp_axis[key]['axes'][1])
+
+#     # Visualize the results
+#     axis_lines = {}
+#     for key in grasp_axis:
+#         if grasp_axis[key]['center'] is None:
+#             continue
+
+#         center = np.array(grasp_axis[key]['center'])
+#         axes = grasp_axis[key]['axes']
+
+#         # Scale the axes for visualization
+#         scale = 0.5
+#         axis_points = np.array([
+#             center, center + scale * axes[0],  # Principal axis 1
+#             center, center + scale * axes[1],  # Principal axis 2
+#             center, center + scale * axes[2]   # Principal axis 3
+#         ])
+
+#         # Create a line set for visualization
+#         lines = [[0, 1], [2, 3], [4, 5]]
+#         colors = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]  # Red, Green, Blue
+#         axis_lines[key] = o3d.geometry.LineSet()
+#         axis_lines[key].points = o3d.utility.Vector3dVector(axis_points)
+#         axis_lines[key].lines = o3d.utility.Vector2iVector(lines)
+#         axis_lines[key].colors = o3d.utility.Vector3dVector(colors)
+
+#     # Create a camera coordinate frame for visualization
+#     camera = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])
+
+#     # Combine all objects for visualization
+#     objects_to_visualize = [pcd, camera]
+#     for key in axis_lines:
+#         objects_to_visualize.append(axis_lines[key])
+
+#     # Visualize the point cloud and PCA axes
+#     o3d.visualization.draw_geometries(objects_to_visualize)
+
+#     for key in grasp_axis:
+#         grasp_axis[key]['axes'] = grasp_axis[key]['axes'].T
+
+#     for key in grasp_axis:
+#         transformation_matrix = np.eye(4)
+#         transformation_matrix[:3, :3] = grasp_axis[key]['axes']
+#         transformation_matrix[:3, 3] = grasp_axis[key]['center']
+#         grasp_axis[key] = transformation_matrix
+
+#     return grasp_axis
+
 
 def get_gt(color_image, depth_image, intrinsics_):
     """
@@ -231,7 +373,7 @@ def get_gt(color_image, depth_image, intrinsics_):
 
     # Step 2: Create RGBD image and generate point cloud
     rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
-        color_o3d, depth_o3d, depth_scale=1.0, depth_trunc=3.0, convert_rgb_to_intensity=False
+        color_o3d, depth_o3d, depth_scale=1.0, depth_trunc=0.5, convert_rgb_to_intensity=False
     )
     point_cloud = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd, intrinsics)
 
@@ -350,6 +492,35 @@ def get_gt(color_image, depth_image, intrinsics_):
     vis.destroy_window()  # Close visualization
     return transformation
 
+
+def visualize_gripper(color_image, depth_image, intrinsics_, grasp_pose):
+    
+    cx, cy, fx, fy = intrinsics_
+    intrinsics = o3d.camera.PinholeCameraIntrinsic(
+        color_image.shape[1],  # Image width
+        color_image.shape[0],  # Image height
+        fx, fy, cx, cy
+    )
+
+    rgbd_image = o3d.geometry.RGBDImage.create_from_color_and_depth(
+        o3d.geometry.Image(color_image),
+        o3d.geometry.Image(depth_image),
+        depth_scale=1.0,
+        depth_trunc=0.5,  # Adjust depth truncation as needed
+        convert_rgb_to_intensity=False
+    )
+
+    pcd = o3d.geometry.PointCloud.create_from_rgbd_image(rgbd_image, intrinsics)
+
+    gripper_mesh = o3d.io.read_triangle_mesh("/home/nirshal/Downloads/ImageToStl.com_2f85_opened_20190924-sep-06-2024-02-25-46-4707-pm/ImageToStl.com_2f85_opened_20190924-sep-06-2024-02-25-46-4707-pm.stl")
+    
+    gripper_mesh.scale(0.0001, gripper_mesh.get_center())
+    rotation = grasp_pose[0]['axes']
+    translation = grasp_pose[0]['center']
+    gripper_mesh.rotate(rotation, center = tuple(translation))
+    gripper_mesh.translate(translation)
+
+    o3d.visualization.draw_geometries([gripper_mesh, pcd])
 
 def visualize_rotated_axes(pcd, imp_pcd, contact_point_3d, axes, angles=[30, 60, 90], scale=0.5):
     geometries = [pcd, imp_pcd]  # Include the original point cloud and important points

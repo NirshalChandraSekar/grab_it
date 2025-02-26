@@ -2,13 +2,18 @@ import mediapipe as mp
 import cv2
 import numpy as np
 
+
+
+
 def detect_hand_keypoints(image):
     """
     Detects hand keypoints on a single image and displays the drawn image.
-    Returns the 2D coordinates of the thumb tip (point 4) and thumb IP joint (point 3).
+    Returns the 2D coordinates of the thumb tip (point 4) and thumb IP joint (point 3),
+    along with the hand name (Left or Right).
 
-    :param image_path: Path to the image file.
-    :return: Dictionary with coordinates of thumb tip (4) and thumb IP joint (3).
+    :param image: Input image as a NumPy array.
+    :return: Dictionary with coordinates of thumb tip (4) and thumb IP joint (3),
+             along with the hand name (Left or Right).
     """
     # Initialize Mediapipe hands module
     mp_hands = mp.solutions.hands
@@ -22,8 +27,10 @@ def detect_hand_keypoints(image):
 
     keypoints = {}
 
-    if results.multi_hand_landmarks:
-        for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
+    if results.multi_hand_landmarks and results.multi_handedness:
+        for idx, (hand_landmarks, handedness) in enumerate(zip(results.multi_hand_landmarks, results.multi_handedness)):
+            hand_label = handedness.classification[0].label  # "Left" or "Right"
+
             thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
             thumb_ip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_IP]
 
@@ -31,6 +38,7 @@ def detect_hand_keypoints(image):
             thumb_ip_x, thumb_ip_y = int(thumb_ip.x * w), int(thumb_ip.y * h)
 
             keypoints[idx] = {
+                "hand": hand_label,
                 "thumb_tip": (thumb_tip_x, thumb_tip_y),
                 "thumb_ip": (thumb_ip_x, thumb_ip_y)
             }
@@ -45,6 +53,52 @@ def detect_hand_keypoints(image):
     cv2.destroyAllWindows()
 
     return keypoints
+
+
+
+# def detect_hand_keypoints(image):
+#     """
+#     Detects hand keypoints on a single image and displays the drawn image.
+#     Returns the 2D coordinates of the thumb tip (point 4) and thumb IP joint (point 3).
+
+#     :param image_path: Path to the image file.
+#     :return: Dictionary with coordinates of thumb tip (4) and thumb IP joint (3).
+#     """
+#     # Initialize Mediapipe hands module
+#     mp_hands = mp.solutions.hands
+#     hands = mp_hands.Hands(static_image_mode=True, max_num_hands=2, 
+#                            min_detection_confidence=0.1)
+#     mp_draw = mp.solutions.drawing_utils
+
+#     h, w, _ = image.shape
+#     img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+#     results = hands.process(img_rgb)
+
+#     keypoints = {}
+
+#     if results.multi_hand_landmarks:
+#         for idx, hand_landmarks in enumerate(results.multi_hand_landmarks):
+#             thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
+#             thumb_ip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_IP]
+
+#             thumb_tip_x, thumb_tip_y = int(thumb_tip.x * w), int(thumb_tip.y * h)
+#             thumb_ip_x, thumb_ip_y = int(thumb_ip.x * w), int(thumb_ip.y * h)
+
+#             keypoints[idx] = {
+#                 "thumb_tip": (thumb_tip_x, thumb_tip_y),
+#                 "thumb_ip": (thumb_ip_x, thumb_ip_y)
+#             }
+#             mp_draw.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+#     else:
+#         print("No hand detected.")
+
+#     # Display the image with drawn landmarks.
+#     cv2.imshow("Hand Keypoints", image)
+#     cv2.waitKey(0)
+#     cv2.destroyAllWindows()
+
+#     return keypoints
 
 
 
