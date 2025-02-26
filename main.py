@@ -111,7 +111,7 @@ if __name__ == "__main__":
     '''
 
     dino = Dinov2()
-    camera_serials = [130322273305, 126122270307, 126122270722]
+    camera_serials = [130322273305, 127122270512, 126122270722]
 
     best_serial, distance_map, inference_contact_point, inference_directional_point = find_best_camera(dino, demo_image, sampled_points_2d, contact_point_2d, directional_point_2d, object_name, camera_serials)
 

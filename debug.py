@@ -7,7 +7,7 @@ import os
 
 if __name__ == "__main__":
 
-    test_number = "1"
+    test_number = "10"
     object_name = "camera_calibration"
     if not os.path.exists("resources/" + object_name +  "/" + test_number):
         os.makedirs("resources/" + object_name +  "/" + test_number)
@@ -25,8 +25,10 @@ if __name__ == "__main__":
         np.save("resources/" + object_name +  "/" + test_number + "/inference_depth_image_" + key + ".npy", depth_image)
         np.save("resources/" + object_name +  "/" + test_number + "/camera_intrinsic_" + key + ".npy", intrinsic)
         np.save("resources/" + object_name +  "/" + test_number + "/camera_distortion_" + key + ".npy", distortion)
+        print("color imagge shape", color_image.shape)
+        print("depth image shape", depth_image.shape)
         cv2.imshow("color", color_image)
-        cv2.imshow("depth", depth_image)
+        # cv2.imshow("depth", depth_image)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
     
