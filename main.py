@@ -30,8 +30,8 @@ if __name__ == "__main__":
     demo_image = cv2.imread("resources/" + object_name + "/demo.jpg")
     demo_image_hand = cv2.imread("resources/" + object_name + "/demo_hand.jpg")
 
-    demo_image = cv2.resize(demo_image, (demo_image.shape[1]//3,demo_image.shape[0]//3))
-    demo_image_hand = cv2.resize(demo_image_hand, (demo_image_hand.shape[1]//3,demo_image_hand.shape[0]//3))
+    demo_image = cv2.resize(demo_image, (demo_image.shape[1]//5,demo_image.shape[0]//5))
+    demo_image_hand = cv2.resize(demo_image_hand, (demo_image_hand.shape[1]//5,demo_image_hand.shape[0]//5))
 
 
 
@@ -116,8 +116,16 @@ if __name__ == "__main__":
     best_serial, distance_map, inference_contact_point, inference_directional_point = find_best_camera(dino, demo_image, sampled_points_2d, contact_point_2d, directional_point_2d, object_name, camera_serials)
 
     print("Best Serial: ", best_serial)
-    inference_color_image = np.load("resources/" + object_name + "/inference_color_image_" + str(best_serial) + ".npy")
-    inference_color_image = cv2.cvtColor(inference_color_image, cv2.COLOR_BGR2RGB)
+    # inference_color_image = np.load("resources/" + object_name + "/inference_color_image_" + str(best_serial) + ".npy")
+    # inference_color_image = cv2.cvtColor(inference_color_image, cv2.COLOR_BGR2RGB)
+
+    inference_color_images = {}
+
+    for key in best_serial:
+        serial = best_serial[key]
+        inference_color_images[key] = np.load("resources/" + object_name + "/inference_color_image_" + str(serial) + ".npy")
+        inference_color_images[key] = cv2.cvtColor(inference_color_images[key], cv2.COLOR_BGR2RGB)
+
 
 
 
@@ -141,17 +149,40 @@ if __name__ == "__main__":
     display_image(keypoint_overlay, "Hand Keypoints Overlay")
 
 
-    intrinsics = np.load("resources/" + object_name + "/camera_intrinsic_" + str(best_serial) + ".npy")
-    inference_depth_image = np.load("resources/" + object_name + "/inference_depth_image_" + str(best_serial) + ".npy")
-    inference_color_image = np.load("resources/" + object_name + "/inference_color_image_" + str(best_serial) + ".npy")
-    inference_color_image = cv2.cvtColor(inference_color_image, cv2.COLOR_BGR2RGB)
-    inference_depth_image = inference_depth_image.astype(np.float32)
-    inference_depth_image *= 0.0001 # D4054
-    # inference_depth_image *= 0.00025
+    # intrinsics = np.load("resources/" + object_name + "/camera_intrinsic_" + str(best_serial) + ".npy")
+    # inference_depth_image = np.load("resources/" + object_name + "/inference_depth_image_" + str(best_serial) + ".npy")
+    # inference_color_image = np.load("resources/" + object_name + "/inference_color_image_" + str(best_serial) + ".npy")
+    # inference_color_image = cv2.cvtColor(inference_color_image, cv2.COLOR_BGR2RGB)
+    # inference_depth_image = inference_depth_image.astype(np.float32)
+    # inference_depth_image *= 0.0001 # D4054
+    # # inference_depth_image *= 0.00025
+
+    # gt_grasp_axes = {}
+    # for key in important_pixels:
+    #     gt_grasp_axes[key] = get_gt(inference_color_image, inference_depth_image, intrinsics)
+    # print("GT Grasp Axes: ", gt_grasp_axes)
 
     gt_grasp_axes = {}
-    for key in important_pixels:
-        gt_grasp_axes[key] = get_gt(inference_color_image, inference_depth_image, intrinsics)
+    inference_color_images = {}
+    inference_depth_images = {}
+    intrinsics = {}
+
+    for key in best_serial:
+        serial = best_serial[key]
+
+        # Load intrinsic parameters, depth image, and color image for each hand
+        intrinsics[key] = np.load(f"resources/{object_name}/camera_intrinsic_{serial}.npy")
+        inference_depth_images[key] = np.load(f"resources/{object_name}/inference_depth_image_{serial}.npy").astype(np.float32)
+        inference_color_images[key] = np.load(f"resources/{object_name}/inference_color_image_{serial}.npy")
+
+        # Convert images appropriately
+        inference_color_images[key] = cv2.cvtColor(inference_color_images[key], cv2.COLOR_BGR2RGB)
+        inference_depth_images[key] *= 0.0001  # D4054
+        # inference_depth_images[key] *= 0.00025  # Uncomment if needed
+
+        # Get GT grasp axes for each hand
+        gt_grasp_axes[key] = get_gt(inference_color_images[key], inference_depth_images[key], intrinsics[key])
+
     print("GT Grasp Axes: ", gt_grasp_axes)
 
 
@@ -162,15 +193,36 @@ if __name__ == "__main__":
     '''
     
     
-    grasp_axes = pca_3d(important_pixels, 
-           intrinsics, 
-           inference_depth_image, 
-           inference_color_image,
-           inference_contact_point,
-           inference_directional_point)
+    # grasp_axes = pca_3d(important_pixels, 
+    #        intrinsics, 
+    #        inference_depth_image, 
+    #        inference_color_image,
+    #        inference_contact_point,
+    #        inference_directional_point)
     
-    print("Grasp Axes: ", grasp_axes)
-    np.save("resources/"+object_name+"/grasp_pose_"+object_name+".npy", grasp_axes)
+    # print("Grasp Axes: ", grasp_axes)
+    # np.save("resources/"+object_name+"/grasp_pose_"+object_name+".npy", grasp_axes)
+
+    grasp_axes = {}
+    for key in best_serial:
+        serial = best_serial[key]
+
+        # Compute PCA-based grasp axes for each hand separately
+        grasp_axes[key] = pca_3d(
+            important_pixels[key], 
+            intrinsics[key], 
+            inference_depth_images[key], 
+            inference_color_images[key], 
+            inference_contact_point[key], 
+            inference_directional_point[key]
+        )
+
+        print(f"Grasp Axes for Hand {key}: ", grasp_axes[key])
+
+    # Save grasp axes separately for each hand
+    np.save(f"resources/{object_name}/grasp_pose_{object_name}.npy", grasp_axes)
+
+        
     
     
 
