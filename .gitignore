@@ -2,6 +2,9 @@ extra/
 __pycache__/
 resources/
 mohit/
-try.py
+mohit_try.py
 camera_calibration_utils/
 .gitignore
+fused_pointcloud.pcd
+fused_pointcloud_dino.pcd
+debug.py

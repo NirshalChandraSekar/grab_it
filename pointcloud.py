@@ -24,6 +24,64 @@ def generate_pointcloud_from_images(rgb_image : np.ndarray,
 
     return pcd
 
+def create_camera_wireframe(intrinsics : np.ndarray, 
+                            extrinsics : np.ndarray, 
+                            width : int, 
+                            height : int, 
+                            scale=0.1):
+    """
+    Create a wireframe representation of a camera frustum.
+    
+    :param intrinsics: [cx, cy, fx, fy]
+    :param extrinsics: 4x4 camera extrinsic matrix
+    :param width: Image width
+    :param height: Image height
+    :param scale: Scaling factor for the frustum
+    :return: Open3D LineSet representing the camera frustum
+    """
+    cx, cy, fx, fy = intrinsics
+
+    # Define frustum corner points in image space
+    corners = np.array([
+        [0, 0, 1],  # Top-left
+        [width, 0, 1],  # Top-right
+        [width, height, 1],  # Bottom-right
+        [0, height, 1]  # Bottom-left
+    ])
+
+    # Convert to camera space
+    corners[:, 0] = (corners[:, 0] - cx) / fx
+    corners[:, 1] = (corners[:, 1] - cy) / fy
+    corners *= scale  # Scale the frustum size
+
+    # Define camera origin
+    camera_origin = np.array([[0, 0, 0]])
+
+    # Transform frustum points to world coordinates
+    corners = np.hstack((corners, np.ones((4, 1))))  # Convert to homogeneous coordinates
+    corners = (extrinsics @ corners.T).T[:, :3]  # Apply extrinsics
+
+    # Apply transformation to camera origin
+    camera_origin = (extrinsics @ np.append(camera_origin, [[1]], axis=1).T).T[:, :3]
+
+    # Define edges
+    lines = [
+        [0, 1], [1, 2], [2, 3], [3, 0],  # Image plane edges
+        [4, 0], [4, 1], [4, 2], [4, 3]   # Connections to camera origin
+    ]
+
+    # Merge points (camera origin + corners)
+    points = np.vstack((camera_origin, corners))
+
+    # Create LineSet
+    colors = [[1, 0, 0] for _ in lines]  # Red color
+    line_set = o3d.geometry.LineSet()
+    line_set.points = o3d.utility.Vector3dVector(points)
+    line_set.lines = o3d.utility.Vector2iVector(lines)
+    line_set.colors = o3d.utility.Vector3dVector(colors)
+
+    return line_set
+
 def filter_pointcloud_radius_outlier_removal(
     pointcloud : o3d.geometry.PointCloud,
     radius : float = 0.005,
@@ -48,11 +106,12 @@ def voxel_downsample_pointcloud(pointcloud : o3d.geometry.PointCloud,
     return pointcloud.voxel_down_sample(voxel_size=voxel_size)
 
 def generate_fused_pointcloud_from_images(
-    rs_images_path : str,
-    transformation_matrix_1_2_path : str,
-    transformation_matrix_1_3_path : str,
+    object : str,
+    transformation_matrix_1_2 : np.ndarray,
+    transformation_matrix_1_3 : np.ndarray,
     depth_scale : float = 1/0.00025, ## For L515: 1/0.00025 For D455: 1/0.0001
     depth_truncation : float = 1.0,
+    z_displacement : float = 0.05,
     downsample_voxel_size : float = None,
     remove_outliers : bool = True,
     radius_outlier_removal : float = 0.005,
@@ -61,9 +120,9 @@ def generate_fused_pointcloud_from_images(
 )    -> o3d.geometry.PointCloud:
     """Generate a merged pointcloud from RGB and depth images.
     Args:
-        rs_images_path (str): Path to RGB and depth images.
-        transformation_matrix_1_2_path (str): Path to transformation matrix from camera 1 to camera 2.
-        transformation_matrix_1_3_path (str): Path to transformation matrix from camera 1 to camera 3.
+        object (str): Object name.
+        transformation_matrix_1_2 (np.ndarray): Transformation matrix from camera 1 to camera 2.
+        transformation_matrix_1_3 (np.ndarray): Transformation matrix from camera 1 to camera 3.
         depth_scale (float, optional): Depth scale. Defaults to 1/0.00025.
         depth_truncation (float, optional): Depth truncation. Defaults to 1.0.
         downsample_voxel_size (float, optional): Voxel size for downsampling. PC not downsampled if None. Defaults to None.
@@ -73,30 +132,25 @@ def generate_fused_pointcloud_from_images(
     """   
     ## Load Images.
     # rs_image_data = np.load(rs_images_path, allow_pickle=True).item()
-    '''
-    Camera Serial to number 
-    130322273305 -> 1
-    128422270081 -> 2
-    127122270512 -> 3
-    '''
+
     camera_num_2_serial = {
         1 : "130322273305",
-        2 : "128422270081",
-        3 : "127122270512"
+        2 : "127122270512",
+        3 : "126122270722",
     }
 
-    rgb1 = np.load(f"resources/dino/inference_color_image_{camera_num_2_serial[1]}.npy")
-    rgb2 = np.load(f"resources/dino/inference_color_image_{camera_num_2_serial[2]}.npy")
-    rgb3 = np.load(f"resources/dino/inference_color_image_{camera_num_2_serial[3]}.npy")
+    rgb1 = np.load(f"resources/{object}/inference_color_image_{camera_num_2_serial[1]}.npy")
+    rgb2 = np.load(f"resources/{object}/inference_color_image_{camera_num_2_serial[2]}.npy")
+    rgb3 = np.load(f"resources/{object}/inference_color_image_{camera_num_2_serial[3]}.npy")
 
-    depth1 = np.load(f"resources/dino/inference_depth_image_{camera_num_2_serial[1]}.npy")
-    depth2 = np.load(f"resources/dino/inference_depth_image_{camera_num_2_serial[2]}.npy")
-    depth3 = np.load(f"resources/dino/inference_depth_image_{camera_num_2_serial[3]}.npy")
+    depth1 = np.load(f"resources/{object}/inference_depth_image_{camera_num_2_serial[1]}.npy")
+    depth2 = np.load(f"resources/{object}/inference_depth_image_{camera_num_2_serial[2]}.npy")
+    depth3 = np.load(f"resources/{object}/inference_depth_image_{camera_num_2_serial[3]}.npy")
 
     ## Load camera intrinsic parameters
-    camera1_intrinsics = np.load(f"resources/dino/camera_intrinsic_{camera_num_2_serial[1]}.npy")
-    camera2_intrinsics = np.load(f"resources/dino/camera_intrinsic_{camera_num_2_serial[2]}.npy")
-    camera3_intrinsics = np.load(f"resources/dino/camera_intrinsic_{camera_num_2_serial[3]}.npy")
+    camera1_intrinsics = np.load(f"resources/{object}/camera_intrinsic_{camera_num_2_serial[1]}.npy")
+    camera2_intrinsics = np.load(f"resources/{object}/camera_intrinsic_{camera_num_2_serial[2]}.npy")
+    camera3_intrinsics = np.load(f"resources/{object}/camera_intrinsic_{camera_num_2_serial[3]}.npy")
 
     camera1_intrinsics = o3d.camera.PinholeCameraIntrinsic(width=rgb1.shape[1],height=rgb1.shape[0],fx=camera1_intrinsics[2], fy=camera1_intrinsics[3],cx=camera1_intrinsics[0],cy=camera1_intrinsics[1])
     camera2_intrinsics = o3d.camera.PinholeCameraIntrinsic(width=rgb2.shape[1],height=rgb2.shape[0],fx=camera2_intrinsics[2], fy=camera2_intrinsics[3],cx=camera2_intrinsics[0],cy=camera2_intrinsics[1])
@@ -107,7 +161,6 @@ def generate_fused_pointcloud_from_images(
     pointcloud2 = generate_pointcloud_from_images(rgb2, depth2, camera2_intrinsics, depth_scale, depth_truncation)
     pointcloud3 = generate_pointcloud_from_images(rgb3, depth3, camera3_intrinsics, depth_scale, depth_truncation)
 
-    z_displacement = 0.04
     pointcloud1.transform([[1, 0, 0, 0],
                             [0, 1, 0, 0],
                             [0, 0, 1, z_displacement],
@@ -120,10 +173,6 @@ def generate_fused_pointcloud_from_images(
                             [0, 1, 0, 0],
                             [0, 0, 1, z_displacement],
                             [0, 0, 0, 1]])
-
-    ## Load the transformation matrix
-    transformation_matrix_1_2 = np.load(transformation_matrix_1_2_path)
-    transformation_matrix_1_3 = np.load(transformation_matrix_1_3_path)
 
     ## Filter Pointclouds to remove outliers (_ are indices)
     if remove_outliers:
@@ -154,7 +203,10 @@ def generate_fused_pointcloud_from_images(
                                         camera2_coordinate_frame, 
                                         camera3_coordinate_frame], 
                                         window_name="Point Cloud")
-    
+    ## Save the merged pointcloud
+    o3d.io.write_point_cloud(f"resources/{object}/fused_pointcloud.ply", fused_pointcloud)
+    print(f"Saved the merged pointcloud to resources/{object}/fused_pointcloud.ply")
+
     return fused_pointcloud
     
 def generate_antipodal_point_pairs(pointcloud : o3d.geometry.PointCloud,
@@ -287,14 +339,13 @@ def get_gripper_pose_plane_based(rotation_matrix : np.ndarray,
                                         point_show_normal=True, 
                                         window_name="Filtered Point Cloud")
 
-
-def get_gripper_pose(rotation_matrix : np.ndarray,
+def get_gripper_pose_back_camera_frame(rotation_matrix : np.ndarray,
                     pointcloud : o3d.geometry.PointCloud,
                     max_gripper_width : float = 0.08,
                     plane_threshold : float = 0.005,
                     closest_distance : float = 0.01,
                     angle_threshold : float = np.pi/18, ## 10 degrees
-                    neighborhood_size : int = 30,) -> Tuple[int, np.ndarray]:
+                    neighborhood_size : int = 30,) -> np.ndarray:
     """Get the gripper pose from the pointcloud."""
 
     points = np.asarray(pointcloud.points)
@@ -309,6 +360,13 @@ def get_gripper_pose(rotation_matrix : np.ndarray,
 
     # ## Filter the points within the gripper width
     distance_from_gripper_point = np.linalg.norm(points - grasp_point, axis=1).reshape(-1, 1)
+
+    ## Patch of 1 cm
+    grasp_point_patch_idxs = np.where(distance_from_gripper_point < closest_distance)[0]
+
+    normals_of_patch = np.array(pointcloud.normals)[grasp_point_patch_idxs]
+    grasp_point_normal = np.mean(normals_of_patch, axis=0)
+
     idx_within_gripper_width = np.where((distance_from_gripper_point < max_gripper_width) & (distance_from_gripper_point > closest_distance))[0] # | (distance_from_gripper_point == 0))[0]
     pcd_filtered_by_distance = pointcloud.select_by_index(idx_within_gripper_width)
 
@@ -318,7 +376,7 @@ def get_gripper_pose(rotation_matrix : np.ndarray,
     antipodal_point = points_pcd_filtered[np.argmin(distance_from_gripper_normal)]
 
     ## Mid Point
-    offset_distance = 0.1
+    offset_distance = 0.08
     mid_point = (grasp_point + antipodal_point) / 2
     gripper_translation = mid_point - offset_distance*rotation_matrix[:3, 0].T
 
@@ -331,6 +389,10 @@ def get_gripper_pose(rotation_matrix : np.ndarray,
     gripper_pose[:3, 0] = x_axis
     gripper_pose[:3, 1] = y_axis
     gripper_pose[:3, 2] = z_axis
+
+    ## Rotation matrix about z-axis by 180
+    rotation_matrix_180 = o3d.geometry.get_rotation_matrix_from_axis_angle(np.array([0, 0, np.pi]))
+    gripper_pose[:3, :3] =  gripper_pose[:3, :3] @ rotation_matrix_180
     gripper_pose[:3, 3] = gripper_translation
 
     ## Gripper Coordinate Frame
@@ -358,154 +420,82 @@ def get_gripper_pose(rotation_matrix : np.ndarray,
                                         ],
                                         point_show_normal=False, 
                                         window_name="Filtered Point Cloud")
-
-
-
-    # ## Filter Points on the gripper plane
-    # d = -np.dot(rotation_matrix[:3, 3], rotation_matrix[:3, 0]) ## Dot product of point andnormal(x-axis)
-    # distance_from_gripper_plane = np.abs(np.dot(points[idx_within_gripper_width], rotation_matrix[:3, 0]) + d) / np.linalg.norm(rotation_matrix[:3, 0])
-    # idx_in_plane = np.where(distance_from_gripper_plane < plane_threshold)[0]
-
-    # pcd_filtered_by_distance_and_plane = pcd_filtered_by_distance.select_by_index(idx_in_plane)
-
-    # ## Get the antipodal metric
-    # pcd_normals = np.asarray(pcd_filtered_by_distance_and_plane.normals)
-
-    # antipodal_metric = np.abs(np.dot(pcd_normals, grasp_point_normal)) ## There are Cos Angles
-    # antipodal_pair_idx = np.argsort(antipodal_metric)[-2]
-    # antipodal_point = np.asarray(pcd_filtered_by_distance_and_plane.points)[antipodal_pair_idx]
-
-    # ## Make a sphere around the antipodal point
-    # antipodal_point_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.002)
-    # antipodal_point_sphere.translate(antipodal_point)
-    # antipodal_point_sphere.paint_uniform_color([0, 0, 1]) ## Blue color
-
-    # ## Make a sphere aroud the grasp point
-    # grasp_point_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.002)
-    # grasp_point_sphere.translate(grasp_point)
-    # grasp_point_sphere.paint_uniform_color([0, 0, 1]) ## Blue color
-
-    # camera1_coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])
-    # o3d.visualization.draw_geometries([pcd_filtered_by_distance_and_plane,
-    #                                     camera1_coordinate_frame,
-    #                                     grasp_point_sphere,
-    #                                     antipodal_point_sphere
-    #                                     ],
-    #                                     point_show_normal=True, 
-    #                                     window_name="Filtered Point Cloud")
-
-if __name__ == "__main__":
-    camera_num_2_serial = {
-        1 : "130322273305",
-        2 : "128422270081",
-        3 : "127122270512"
-    }
     
-    # fused_pointcloud = generate_fused_pointcloud_from_images(
-    #                         rs_images_path="multi_camera_pouch.npy",
-    #                         transformation_matrix_1_2_path="camera_calibration_utils/transformation_matrix_1_2.npy",
-    #                         transformation_matrix_1_3_path="camera_calibration_utils/transformation_matrix_1_3.npy",
-    #                         downsample_voxel_size=0.003, ## This will speed up the processing significantly. Keep 0.01
-    #                         visualize=True,
-    #                         remove_outliers=True,
-    #                         radius_outlier_removal=0.005,
-    #                         num_neighbors_outlier_removal=20,
-    #                         depth_scale=1/0.0001,
-    #                         depth_truncation=0.4
-    #                     )
-    # ## Save the PCD
-    # o3d.io.write_point_cloud("fused_pointcloud_dino.pcd", fused_pointcloud)
+    return gripper_pose
 
-    ## Load the PCD
-    fused_pointcloud = o3d.io.read_point_cloud("fused_pointcloud_dino.pcd")
-    ### Camera 3 view.
-    ## Load transformation matrix
-    transformation_matrix_1_3 = np.load("camera_calibration_utils/transformation_matrix_1_3.npy")
-    transformation_matrix_1_2 = np.load("camera_calibration_utils/transformation_matrix_1_2.npy")
+def get_gripper_pose(
+    object : str,
+    transformation_matrix_1_2 : np.ndarray,
+    transformation_matrix_1_3 : np.ndarray,
+    gripper_pose_wrt_camera : np.ndarray,
+    camera_num : int,
+    arm : str = 'lightning',
+) -> np.ndarray:
+    
+    ## Generate the fused PointCloud
+    fused_pointcloud = generate_fused_pointcloud_from_images(
+                            object=object,
+                            transformation_matrix_1_2 = transformation_matrix_1_2,
+                            transformation_matrix_1_3 = transformation_matrix_1_3,
+                            downsample_voxel_size=None, ## This will speed up the processing significantly. Keep 0.01
+                            z_displacement=0.04,
+                            visualize=True,
+                            remove_outliers=True,
+                            radius_outlier_removal=0.005,
+                            num_neighbors_outlier_removal=40,
+                            depth_scale=1/0.0001,
+                            depth_truncation=0.4
+                        )
+    
+    ## Get the gripper pose in back camera frame, Do nothing if camera_num == 1
+    if camera_num == 2:
+        gripper_pose_wrt_camera = transformation_matrix_1_2 @ gripper_pose_wrt_camera
+    elif camera_num == 3:
+        gripper_pose_wrt_camera = transformation_matrix_1_3 @ gripper_pose_wrt_camera
 
-    ## Input is point where the human Gripped the Item and the Rotation metrix.
-
-    gripper_point = np.array([-0.0445967326784003, 0.00028400676882089546, 0.297 + 0.04])
-    gripper_rotation_matrix = np.array([[0.88892108,  0.19825181,  0.41293526],
-                                        [0.42529549, -0.02239377, -0.90477747],
-                                        [-0.17012659,  0.97989527, -0.10422189]])
-
-    gripper_matrix = np.eye(4)
-    gripper_matrix[:3, 3] = gripper_point
-    gripper_matrix[:3, :3] = gripper_rotation_matrix
-
-    ## Trasform the gripper point to camera 1 coordinate frame
-    gripper_matrix = transformation_matrix_1_3 @ gripper_matrix
-
-    gripper_coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
-    gripper_coordinate_frame.transform(gripper_matrix)
-
-    # closest_point_idx, antipodal_point_idxs = find_antipodal_point_wrt_query_point(
-    #     gripper_point,
-    #     #normal_set_point,
-    #     fused_pointcloud,
-    #     max_gripper_width=0.08,
-    #     closest_distance_threshold=0.005,
-    #     angle_threshold=np.pi/18,
-    #     neighborhood_size=30)
-
-    ## Get the gripper pose
-    gripper_pose = get_gripper_pose(
-        rotation_matrix=gripper_matrix,
+    ## Rotation Matrix should be in the back camera frame
+    gripper_pose_base_camera = get_gripper_pose_back_camera_frame(
+        rotation_matrix=gripper_pose_wrt_camera,
         pointcloud=fused_pointcloud,
         max_gripper_width=0.08,
         plane_threshold=0.005,
         closest_distance=0.02,
         angle_threshold=np.pi/18, ## 10 degrees
-        neighborhood_size=30,)
-        
+        neighborhood_size=30,
+    )
 
-    exit()
+    T_base2backcam = np.load('resources/camera_calibration/T_base2backcam.npy')
+    gripper_pose_wrt_base = T_base2backcam @ gripper_pose_base_camera
+
+    if arm == 'thunder':
+        ## Transfer to thunder frame
+        rotation_matrix_180 = o3d.geometry.get_rotation_matrix_from_axis_angle(np.array([0, 0, np.pi]))
+        gripper_pose_wrt_base[:3, :3] = rotation_matrix_180 @ gripper_pose_wrt_base[:3, :3]
+
+        ## Translate y by 0.710
+        gripper_pose_wrt_base[:3, 3] = gripper_pose_wrt_base[:3, 3] + np.array([0, -0.710, 0])
+
+    ## Save gripper pose
+    np.save(f"resources/{object}/gripper_pose_wrt_base.npy", gripper_pose_wrt_base)
+    print("Gripper Pose in Base Frame: ", gripper_pose_wrt_base)
+
+    return gripper_pose_wrt_base    
+
+if __name__ == "__main__":
+    object = "pouch"
+
+    transformation_matrix_1_2 = np.load("resources/camera_calibration/transformation_matrix_1_2.npy")
+    transformation_matrix_1_3 = np.load("resources/camera_calibration/transformation_matrix_1_3.npy")
+
+    ## Load the gripper_pose from Nirshal
+    gripper_transformation = np.load(f'resources/{object}/grasp_pose_pouch4.npy', allow_pickle=True).item()
     
-    print(f"Closest point index: {closest_point_idx}")
-    print(f"Length of antipodal points: {len(antipodal_point_idxs)}")
-    if len(antipodal_point_idxs) == 0:
-        antipodal_point_idxs = np.array([closest_point_idx])
-        
-    antipodal_points = np.asarray(fused_pointcloud.points)[antipodal_point_idxs]
 
-    ## Generate pointcloud of antipodal points
-    antipodal_pointcloud = o3d.geometry.PointCloud()
-    antipodal_pointcloud.points = o3d.utility.Vector3dVector(antipodal_points)
-    antipodal_pointcloud.paint_uniform_color([0, 0, 1])  ## Red color
-
-    ## Show the closest point as sphere
-    closest_point = np.asarray(fused_pointcloud.points)[closest_point_idx]
-    closest_point_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.002)
-    closest_point_sphere.translate(closest_point)
-    closest_point_sphere.paint_uniform_color([0, 1, 0])  ## Green color
-
-    gripper_point_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.002)
-    gripper_point_sphere.translate(gripper_point)
-    gripper_point_sphere.paint_uniform_color([1, 1, 0])  ## Yellow color
-
-    normal_set_point_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.002)
-    normal_set_point_sphere.translate(normal_set_point)
-    normal_set_point_sphere.paint_uniform_color([0, 0, 1])  ## Blue color
-
-    ## Visualize the pointcloud
-    ## Normals
-    fused_pointcloud.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=30))
-
-    origin_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])
-    camera2_coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])
-    camera2_coordinate_frame.transform(transformation_matrix_1_2)
-
-    camera3_coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])
-    camera3_coordinate_frame.transform(transformation_matrix_1_3)
-    
-    o3d.visualization.draw_geometries([fused_pointcloud, 
-                                       normal_set_point_sphere,
-                                       antipodal_pointcloud,
-                                       closest_point_sphere,
-                                       origin_frame,
-                                       gripper_point_sphere,
-                                       camera2_coordinate_frame,
-                                       camera3_coordinate_frame], 
-                                       window_name="Point Cloud with Antipodal Points",
-                                       point_show_normal=False,)
+    gripper_pose = get_gripper_pose(
+        object=object,
+        transformation_matrix_1_2=transformation_matrix_1_2,
+        transformation_matrix_1_3=transformation_matrix_1_3,
+        gripper_pose_wrt_camera = gripper_transformation[0], ## input from Nischal
+        camera_num = 1, ## input from Nischal
+        arm = 'lightning' ## input from Nischal
+    )

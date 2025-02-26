@@ -16,8 +16,6 @@ def display_image(image, window_name="Image"):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-
-
 if __name__ == "__main__":
     object_name = "pouch"
 
