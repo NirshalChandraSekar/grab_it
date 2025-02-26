@@ -1,9 +1,11 @@
 # from hand_traking import detect_hand_keypoints, sample_points_on_line
 import cv2
 import numpy as np
-import torch
+# import torch
 from inference_stream import InferenceStream, InferenceMultiCamera
 import os
+
+from robot import RobotController
 
 if __name__ == "__main__":
 
@@ -12,7 +14,13 @@ if __name__ == "__main__":
     if not os.path.exists("resources/" + object_name +  "/" + test_number):
         os.makedirs("resources/" + object_name +  "/" + test_number)
     stream = InferenceMultiCamera()
+    lightning_controller = RobotController('lightning', False, False)
     frames_dict = stream.get_frames()
+
+    ## Save the current EEF pose
+    eef_pose = lightning_controller.get_eff_pose()
+
+    np.save("resources/" + object_name +  "/" + test_number + "/eef_pose.npy", eef_pose)
     for key in frames_dict:
         color_image = frames_dict[key]["color"]
         depth_image = frames_dict[key]["depth"]
