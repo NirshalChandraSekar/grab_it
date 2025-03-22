@@ -1,5 +1,6 @@
 import pyrealsense2 as rs
 import numpy as np
+import time
 import cv2
 
 
@@ -113,6 +114,8 @@ class InferenceMultiCamera:
                 }
             except Exception as e:
                 print(f"Error capturing frames for {serial}: {e}")
+
+            # time.sleep(0.1)
 
         return frames_dict
 

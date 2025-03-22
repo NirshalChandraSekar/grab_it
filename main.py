@@ -10,12 +10,15 @@ import matplotlib.pyplot as plt
 import open3d as o3d
 import numpy as np
 import torch
+import time
 import cv2
 
 def display_image(image, window_name="Image"):
     cv2.imshow(window_name, image)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+
+
 
 if __name__ == "__main__":
     object_name = "pouch4"
@@ -37,7 +40,7 @@ if __name__ == "__main__":
     Run Mediapipe on the hand image to get the keypoints of thumb tip and thumb ip
     '''
     keypoints = detect_hand_keypoints(demo_image_hand)
-    print("Keypoints: ", keypoints)
+    print("Keyp oints: ", keypoints)
     keypoint_overlay = demo_image.copy()
     contact_point_2d = {}
     directional_point_2d = {}
@@ -60,22 +63,23 @@ if __name__ == "__main__":
     mask = segmentor.segment_image(demo_image)
     mask = mask.transpose(1, 2, 0)
     viewable_mask = mask.astype(np.uint8) * 255
-    # display_image(viewable_mask, "Segmented Mask")
+    display_image(viewable_mask, "Segmented Mask")
 
     sampled_points_2d = {}
     for key in keypoints:
         sampled_points_2d[key] = sample_points_on_line(keypoints[key]["thumb_tip"], keypoints[key]["thumb_ip"], mask)
-        # for point in sampled_points_2d[key]:
-        #     cv2.circle(keypoint_overlay, point, 3, (0, 255, 0), -1)
+        for point in sampled_points_2d[key]:
+            cv2.circle(keypoint_overlay, point, 3, (0, 255, 0), -1)
 
-    # display_image(keypoint_overlay, "Sampled Points Overlay")
+    display_image(keypoint_overlay, "Sampled Points Overlay")
 
 
 
     '''
     Record Inference using the realsense camera
     '''
-    check = input("Do you want to record the inference? (1 for yes, 0 for no): ")
+    # check = input("Do you want to record the inference? (1 for yes, 0 for no): ")
+    check = 0
     if check == "1":
         _ = input("Verify if camera is connected and press enter to continue")
         # stream = InferenceStream()
@@ -182,6 +186,8 @@ if __name__ == "__main__":
         gt_grasp_axes[key] = get_gt(inference_color_images[key], inference_depth_images[key], intrinsics[key])
 
     print("GT Grasp Axes: ", gt_grasp_axes)
+
+    np.save(f"resources/{object_name}/gt_grasp_pose_{object_name}.npy", gt_grasp_axes)
 
 
     

@@ -9,8 +9,8 @@ from robot import RobotController
 
 if __name__ == "__main__":
 
-    test_number = "10"
-    object_name = "camera_calibration"
+    test_number = "7"
+    object_name = "camera_calibration_2"
     if not os.path.exists("resources/" + object_name +  "/" + test_number):
         os.makedirs("resources/" + object_name +  "/" + test_number)
     stream = InferenceMultiCamera()

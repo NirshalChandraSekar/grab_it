@@ -93,7 +93,7 @@ def pca_3d(points, intrinsics_, depth_image, color_image, contact_point, inferen
         z = depth_image[int(v), int(u)]  # Depth value at (v, u)
 
         # Check if depth value is valid
-        if np.isfinite(z) and 0 < z < 3:  # Adjust depth truncation as needed
+        if np.isfinite(z) and 0 < z < 0.5:  # Adjust depth truncation as needed
             x = (u - cx) * z / fx  # X coordinate
             y = (v - cy) * z / fy  # Y coordinate
             valid_x.append(x)
