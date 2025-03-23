@@ -24,16 +24,19 @@ def main():
     ## Back Cam
     backcam_coordinate_frame = make_coordinate_frame(T_base2backcam)
 
-
-
     ## Load the predicted grasp
     lightning_gripper_pose = np.load(f"resources/{object}/gripper_pose_wrt_base.npy")
 
-
     ## Load Gripper Mesh
-    gripper_mesh = o3d.io.read_triangle_mesh(f"resources/gripper-mesh/robotiq85.stl")
+    gripper_mesh = o3d.io.read_triangle_mesh(f"resources/gripper-mesh/ImageToStl.com_2f85_opened_20190924.ply")
     gripper_mesh.compute_vertex_normals()
-    gripper_mesh.paint_uniform_color([0, 0, 0])
+
+    ## Color with a gradient
+    colors = np.zeros((len(gripper_mesh.vertices), 3))
+    for i in range(len(gripper_mesh.vertices)):
+        color_value = 0.7 * (i / len(gripper_mesh.vertices))
+        colors[i] = [color_value, color_value, color_value]
+    gripper_mesh.vertex_colors = o3d.utility.Vector3dVector(colors)
 
     gripper_mesh.scale(0.001, center=gripper_mesh.get_center())
     gripper_mesh.translate(gripper_mesh.get_center() * -1)
@@ -49,18 +52,21 @@ def main():
     gripper_coordinate_frame = make_coordinate_frame(lightning_gripper_pose)
 
     ## Filter the point cloud for points that are less than 0.3m z
-    fused_pcd = fused_pcd.select_by_index(np.where(np.array(fused_pcd.points)[:, 2] > 0.5)[0])
-    fused_pcd = fused_pcd.select_by_index(np.where(np.array(fused_pcd.points)[:, 2] < 0.65)[0])
+    # fused_pcd = fused_pcd.select_by_index(np.where(np.array(fused_pcd.points)[:, 2] > 0.5)[0])
+    # fused_pcd = fused_pcd.select_by_index(np.where(np.array(fused_pcd.points)[:, 2] < 1)[0])
 
     base_coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
+    base_coordinate_frame.transform(T_base2wrist_cam)
+
     o3d.visualization.draw_geometries([
-                                  #base_coordinate_frame, 
+                                  base_coordinate_frame, 
+                                  cam_coordinate_frame,
                                   gripper_mesh,
-                                  #backcam_coordinate_frame,
-                                  #gripper_coordinate_frame,
+                                  backcam_coordinate_frame,
+                                  gripper_coordinate_frame,
                                   fused_pcd,
-                                  #cam_coordinate_frame, 
-                                  #eef_coordinate_frame
+                                  cam_coordinate_frame, 
+                                  eef_coordinate_frame
                                   ],
                                   window_name="Coordinate Frames",
                                   )

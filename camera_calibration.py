@@ -1,3 +1,4 @@
+import os
 import cv2
 import time
 import numpy as np
@@ -145,6 +146,9 @@ def get_transformation_from_base_to_wrist_camera(eef_pose: list) -> np.ndarray:
     ## Make rotaion matrix with 15 degree rotation aroud x axis
     T_eef2cam[0:3, 0:3] = cv2.Rodrigues(np.array([-np.pi/12, 0, 0]))[0]
 
+    ## New Matrix from Calibration.
+    T_eef2cam = np.load('resources/camera_calibration/T_wristcam2lightning_eef.npy')
+
     ## Transformation between the base and the wrist camera
     T_w2cam = T_base2eef @ T_eef2cam
 
@@ -210,19 +214,6 @@ def get_transformation_matrix(data_path : str = "resources/camera_calibration/",
         rgb1, rgb3, camera1_intrinsics, camera3_intrinsics, camera1_distortion, camera3_distortion, board, aruco_dict, aruco_params
     )
 
-    # ## Transformation from base to Lightning camera
-    # T_base2wristcam, T_base2lightning_eef = get_transformation_from_base_to_wrist_camera(lightning_eef_pose)
-
-    # ## Transformation from base to back camera
-    # T_base2backcam = T_base2wristcam @ np.linalg.inv(transformation_matrix_1_2)
-
-    # print("Saving transformation matrices to disk...")
-    # np.save(f"{data_path}/transformation_matrix_1_2.npy", transformation_matrix_1_2)
-    # np.save(f"{data_path}/transformation_matrix_1_3.npy", transformation_matrix_1_3)
-    # np.save(f"{data_path}/T_base2wristcam.npy", T_base2wristcam)
-    # np.save(f"{data_path}/T_base2lightning_eef.npy", T_base2lightning_eef)
-    # np.save(f"{data_path}/T_base2backcam.npy", T_base2backcam)
-
     return transformation_matrix_1_2, transformation_matrix_1_3
 
 def generate_transformation_matrices(
@@ -279,196 +270,82 @@ def generate_transformation_matrices(
 
     return transformation_matrix_1_2, transformation_matrix_1_3
 
+def get_transformation_from_wrist_camera_to_eff(
+        arm: str = "lightning",
+        data_path: str = "resources/wrist_camera_calibration/",
+        camera_serial: str = "127122270512",
+) -> np.ndarray:
+    
+    R_gripper2base = []
+    t_gripper2base = []
+    R_target2cam = []
+    t_target2cam = []
+    for folder in os.listdir(data_path):
+        if not os.path.isdir(os.path.join(data_path, folder)):
+            continue
+        image = np.load(os.path.join(data_path, folder, "inference_color_image_" + camera_serial + ".npy"))
+        intrinsic_matrix = np.load(os.path.join(data_path, folder, "camera_intrinsic_" + camera_serial + ".npy"))
+        distortion_coeffs = np.load(os.path.join(data_path, folder, "camera_distortion_" + camera_serial + ".npy"))
+
+        ## Detect Charuco Corners.
+        board, aruco_dict = generate_and_save_charuco_board(None)
+        aruco_params = cv2.aruco.DetectorParameters()
+
+        charuco_corners, charuco_ids = detect_charuco_corners(image, board, aruco_dict, aruco_params)
+
+        cx, cy, fx, fy = intrinsic_matrix[0], intrinsic_matrix[1], intrinsic_matrix[2], intrinsic_matrix[3]
+
+        intrinsic_matrix = np.array([[fx, 0, cx],
+                                    [0, fy, cy],
+                                    [0, 0, 1]])
+
+
+        if charuco_corners is None or charuco_ids is None:
+            print("Charuco corners detection failed.")
+        else:
+            rvec, tvec = estimate_camera_pose(charuco_corners, charuco_ids, board, intrinsic_matrix, distortion_coeffs)
+
+        R_target2cam.append(rvec)
+        t_target2cam.append(tvec)
+
+        eff_pose = np.load(os.path.join(data_path, folder, "eef_pose.npy"), allow_pickle=True)
+
+        t_gripper2base.append(eff_pose[0:3])
+        R_gripper2base.append(eff_pose[3:6])
+
+    R_cam2gripper, t_cam2gripper = cv2.calibrateHandEye(R_gripper2base, 
+                                                        t_gripper2base, 
+                                                        R_target2cam, 
+                                                        t_target2cam)
+    
+    T_wristcam2eff = np.eye(4)
+    T_wristcam2eff[0:3, 0:3] = R_cam2gripper
+    T_wristcam2eff[0:3, 3] = t_cam2gripper.flatten()
+
+    ## Save the transformation matrix
+    np.save('resources/camera_calibration/T_wristcam2lightning_eef.npy', T_wristcam2eff)
+    print("Transformation matrix from wrist camera to end effector: \n", T_wristcam2eff)
+
+    return T_wristcam2eff
+
+
 if __name__ == "__main__":
 
-    num_iterations = 10
-    robot_pose = np.load('resources/robot/robot_home_pose.npy', allow_pickle=True).item()
-    lightning_eef_pose = robot_pose['lightning']['eef_pose']
+    # num_iterations = 10
+    # robot_pose = np.load('resources/robot/robot_home_pose.npy', allow_pickle=True).item()
+    # lightning_eef_pose = robot_pose['lightning']['eef_pose']
 
-    T_1to2, T_1to3 = generate_transformation_matrices(
-        num_iterations,
-        data_path="resources/camera_calibration/",
-        lightning_eef_pose=lightning_eef_pose,
-        camera1_serial="130322273305",
-        camera2_serial="127122270512",
-        camera3_serial="126122270722",
-    )
-
-
-
-
-
-    """Check Later for thunder to Base transformation."""
-    # ## Create coordinate frame
-    # import open3d as o3d
-    # origin_coordinate = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.3, origin=[0, 0, 0])
-
-    # lightning_cam_matrix = get_transformation_from_base_to_wrist_camera(lightning_capture_eff_pose)
-    # lightning_cam_coordinate = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])
-    # lightning_cam_coordinate.transform(lightning_cam_matrix)
-
-    # ## Transformation between lightning and thunder base
-    # T_base2thunder = np.eye(4)
-    # X_DISPLACEMENT = 0.016
-    # Y_DISPLACEMENT = 0.710
-    # Z_DISPLACEMENT = 0.005
-    # T_base2thunder[0, 3] = X_DISPLACEMENT
-    # T_base2thunder[1, 3] = Y_DISPLACEMENT
-    # T_base2thunder[2, 3] = Z_DISPLACEMENT
-
-    # T_base2thunder[0:3, 0:3] = cv2.Rodrigues(np.array([0, 0, np.pi]))[0]
-        
-
-    # thunder_cam_matrix = get_transformation_from_base_to_wrist_camera(thunder_capture_eff_pose)
-    # thunder_cam_matrix[0:3, 0:3] = thunder_cam_matrix[0:3, 0:3]
-    # thunder_cam_coordinate = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])
-    # thunder_cam_coordinate.transform(T_base2thunder @ thunder_cam_matrix)
-
-    # back_cam_coordinate = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])
-    # back_cam_coordinate.transform(T_robot2backcam)
-
-    # o3d.visualization.draw_geometries([origin_coordinate,
-    #                                    lightning_cam_coordinate,
-    #                                    thunder_cam_coordinate,
-    #                                    back_cam_coordinate,
-    #                                    #pcd1, 
-    #                                    #pcd2
-    #                                    ], window_name="Coordinate Frames")
-
-
-    # wrist_cam_coordinate = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
-    # wrist_cam_coordinate.transform(T_w2cam)
-    # pcd2.transform(T_w2cam) 
-
-    # T_robot2cam = 
-    # robot_2_cam = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
-    # robot_2_cam.transform(T_robot2cam)
-
-    # o3d.visualization.draw_geometries([origin_coordinate, 
-    #                                    wrist_cam_coordinate,
-    #                                    pcd2,
-    #                                    robot_2_cam
-    #                                    #pcd1, 
-    #                                    #pcd2
-    #                                    ])
-    
-    # np.save('transformation_matrix_wrist_camera.npy', T_robot2cam)
-
-
-
-# if __name__ == "__main__":
-
-#     board, aruco_dict = generate_and_save_charuco_board("camera_calibration_utils/charuco_board.png")
-
-#     camera_num_2_serial = {
-#         1 : "130322273305",
-#         2 : "128422270081",
-#         3 : "127122270512"
-#     }
-
-#     # ## Load Images
-#     rgb1 = np.load('mohit/robot_camera_calibration/color_image_130322273305.npy')
-#     rgb2 = np.load('mohit/robot_camera_calibration/color_image_126122270307.npy')
-
-#     ## Flip rgb to bgr
-#     rgb1 = cv2.cvtColor(rgb1, cv2.COLOR_RGB2BGR)
-#     rgb2 = cv2.cvtColor(rgb2, cv2.COLOR_RGB2BGR)
-
-#     depth1 = np.load('mohit/robot_camera_calibration/depth_image_130322273305.npy')
-#     depth2 = np.load('mohit/robot_camera_calibration/depth_image_126122270307.npy')
-
-#     camera1_intrinsics = np.load('mohit/robot_camera_calibration/intrinsic_130322273305.npy')
-#     camera2_intrinsics = np.load('mohit/robot_camera_calibration/intrinsic_126122270307.npy')
-
-#     # print(camera1_intrinsics)
-
-#     cx1, cy1, fx1, fy1 = camera1_intrinsics[0], camera1_intrinsics[1], camera1_intrinsics[2], camera1_intrinsics[3]
-#     cx2, cy2, fx2, fy2 = camera2_intrinsics[0], camera2_intrinsics[1], camera2_intrinsics[2], camera2_intrinsics[3]
-
-#     camera1_intrinsics = np.array([[fx1, 0, cx1],
-#                                     [0, fy1, cy1],
-#                                     [0, 0, 1]])
-
-#     camera2_intrinsics = np.array([[fx2, 0, cx2],
-#                                     [0, fy2, cy2],
-#                                     [0, 0, 1]])
-    
-#     aruco_params = cv2.aruco.DetectorParameters()
-#     distortion_coeffs = np.zeros((5, 1))  # Assuming no distortion
-
-#     # transformation_matrix_1_2 = get_transformation_matrix_between_camera1_and_camera2(
-#     #     rgb1, rgb2, camera1_intrinsics, camera2_intrinsics, distortion_coeffs, distortion_coeffs, board, aruco_dict, aruco_params
-#     # )
-
-#     # np.save('transformation_martix_1_wrist_camera.npy', transformation_matrix_1_2)
-
-#     transformation_matrix_1_2 = np.load('transformation_martix_1_wrist_camera.npy')
-#     ## Create coordinate frame
-#     import open3d as o3d
-#     origin_coordinate = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
-
-#     wrist_cam_coordinate = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
-#     wrist_cam_coordinate.transform(transformation_matrix_1_2)
-
-#     ## Make the point clouds
-#     rgbd_image1 = o3d.geometry.RGBDImage.create_from_color_and_depth(
-#         o3d.geometry.Image(rgb1), o3d.geometry.Image(depth1), depth_scale=1/0.0001, depth_trunc=0.5, convert_rgb_to_intensity=False
-#     )
-#     rgbd_image2 = o3d.geometry.RGBDImage.create_from_color_and_depth(
-#         o3d.geometry.Image(rgb2), o3d.geometry.Image(depth2), depth_scale=1/0.0001, depth_trunc=0.5, convert_rgb_to_intensity=False
-#     )
-#     o3d_intrinsic1 = o3d.camera.PinholeCameraIntrinsic()
-#     o3d_intrinsic1.set_intrinsics(640, 480, fx1, fy1, cx1, cy1)
-#     o3d_intrinsic2 = o3d.camera.PinholeCameraIntrinsic()
-#     o3d_intrinsic2.set_intrinsics(640, 480, fx2, fy2, cx2, cy2)
-
-#     pcd1 = o3d.geometry.PointCloud.create_from_rgbd_image(
-#         rgbd_image1, o3d_intrinsic1
-#     )
-#     pcd2 = o3d.geometry.PointCloud.create_from_rgbd_image(
-#         rgbd_image2, o3d_intrinsic2
-#     )   
-#     pcd1.translate([0, 0, 0.04])
-#     pcd2.translate([0, 0, 0.04])
-#     # pcd2.transform(transformation_matrix_1_2)
-
-
-#     ## Get Robot to Camera Transformation
-#     from robot import RobotController
-#     robot = RobotController('lightning', False, False)
-#     eef_pose = robot.get_eff_pose()
-#     T_w2cam = get_transformation_from_base_to_wrist_camera(eef_pose)
-
-#     wrist_cam_coordinate = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
-#     wrist_cam_coordinate.transform(T_w2cam)
-#     pcd2.transform(T_w2cam) 
-
-#     T_robot2cam = T_w2cam @ np.linalg.inv(transformation_matrix_1_2)
-#     # T_robot2cam = 
-#     robot_2_cam = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=[0, 0, 0])
-#     robot_2_cam.transform(T_robot2cam)
-
-#     o3d.visualization.draw_geometries([origin_coordinate, 
-#                                        wrist_cam_coordinate,
-#                                        pcd2,
-#                                        robot_2_cam
-#                                        #pcd1, 
-#                                        #pcd2
-#                                        ])
-    
-#     np.save('transformation_matrix_wrist_camera.npy', T_robot2cam)
-
-
-    # transformation_matrix_1_3 = get_transformation_matrix_between_camera1_and_camera2(
-    #     rgb1, rgb3, camera1_intrinsics, camera3_intrinsics, distortion_coeffs, distortion_coeffs, board, aruco_dict, aruco_params
+    # T_1to2, T_1to3 = generate_transformation_matrices(
+    #     num_iterations,
+    #     data_path="resources/camera_calibration/",
+    #     lightning_eef_pose=lightning_eef_pose,
+    #     camera1_serial="130322273305",
+    #     camera2_serial="127122270512",
+    #     camera3_serial="126122270722",
     # )
 
-    # print("Transformation Matrix from Camera 1 to Camera 2:")
-    # print(transformation_matrix_1_2)
-
-    # print("Transformation Matrix from Camera 1 to Camera 3:")
-    # print(transformation_matrix_1_3)
-
-    # ## Save the transformation matrix for later use.
-    # np.save("camera_calibration_utils/transformation_matrix_1_2.npy", transformation_matrix_1_2)
-    # np.save("camera_calibration_utils/transformation_matrix_1_3.npy", transformation_matrix_1_3)
+    T_wristcam2eff = get_transformation_from_wrist_camera_to_eff(
+        arm="lightning",
+        data_path="resources/wrist_camera_calibration/",
+        camera_serial="127122270512",
+    )
