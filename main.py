@@ -20,7 +20,9 @@ def display_image(image, window_name="Image"):
 
 
 if __name__ == "__main__":
-    object_name = "pouch4"
+    object_name = "tool_dual_0"
+    stream = InferenceMultiCamera()
+
 
     '''
     Read the demonstration images. Ideally we will have to give the video as input.
@@ -77,7 +79,8 @@ if __name__ == "__main__":
     '''
     Record Inference using the realsense camera
     '''
-    check = input("Do you want to record the inference? (1 for yes, 0 for no): ")
+    # check = input("Do you want to record the inference? (1 for yes, 0 for no): ")
+    check = "0"
     if check == "1":
         _ = input("Verify if camera is connected and press enter to continue")
         # stream = InferenceStream()
@@ -88,7 +91,6 @@ if __name__ == "__main__":
         # np.save("resources/" + object_name + "/inference_depth_image.npy", depth_image)
         # np.save("resources/" + object_name + "/camera_intrinsic.npy", intrinsic)
         
-        stream = InferenceMultiCamera()
         frames_dict = stream.get_frames()
         for key in frames_dict:
             color_image = frames_dict[key]["color"]
@@ -185,6 +187,8 @@ if __name__ == "__main__":
 
     print("GT Grasp Axes: ", gt_grasp_axes)
 
+    # np.save(f"resources/{object_name}/gt_grasp_axes_{object_name}.npy", gt_grasp_axes)
+
 
     
 
@@ -217,10 +221,11 @@ if __name__ == "__main__":
             inference_directional_point[key]
         )
 
-        print(f"Grasp Axes for Hand {key}: ", grasp_axes[key])
+        # print(f"Grasp Axes for Hand {key}: ", grasp_axes[key])
 
     # Save grasp axes separately for each hand
-    np.save(f"resources/{object_name}/grasp_pose_{object_name}.npy", grasp_axes)
+    print("Grasp Axes: ", grasp_axes)
+    # np.save(f"resources/{object_name}/grasp_pose_{object_name}.npy", grasp_axes)
 
         
     
