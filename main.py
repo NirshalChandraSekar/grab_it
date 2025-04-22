@@ -20,8 +20,8 @@ def display_image(image, window_name="Image"):
 
 
 if __name__ == "__main__":
-    object_name = "tool_dual_0"
-    stream = InferenceMultiCamera()
+    object_name = "green_pouch_0"
+    # stream = InferenceMultiCamera()
 
 
     '''
